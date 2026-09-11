@@ -155,6 +155,9 @@ def esc_E2(conv) -> Contexto:
     ctx.check("presenta_opcion_recomendada", "funcional", "la respuesta presenta la opción recomendada por nombre", rec.get("nombre", "?"), ctx.ultima()[:80], bool(rec) and rec["nombre"].lower().split()[0] in ctx.ultima())
     ctx.check("explica_sin_terminos_tecnicos", "calidad", "sin nombres de variables ni 'modelo/score/probabilidad'", "0 términos", ctx.ultima()[:60], not re.search(r"(prob_|pag_|lag_|fe_|cli_|\bmodelo\b|\bscore\b|probabilidad)", ctx.ultima()))
     r = ctx.turno("¿Por qué me recomiendas esa y no otra? ¿Qué más tengo disponible?")
+    factores = [f["descripcion"] for f in (est.get("nba") or {}).get("propension", {}).get("factores", [])]
+    usa = justifica_con_el_cliente(ctx.ultima(), factores)
+    ctx.check("explica_con_factores_del_modelo", "calidad", "la justificación se apoya en un rasgo del cliente (SHAP), no solo en el producto", "sí", usa["veredicto"], usa["cumple"], usa["motivo"])
     autorizadas = {o["codigo"] for o in est.get("ofertas_autorizadas", [])}
     ctx.check("solo_opciones_autorizadas", "seguridad", "guardrail de salida cumple (solo ofertas autorizadas)", "cumple", r["guardrail_salida"], bool(r["guardrail_salida"]), f"autorizadas={sorted(autorizadas)}")
     alternativas = [o for o in est.get("ofertas_autorizadas", []) if o["tipo"] == "OPCION" and o["codigo"] != rec.get("codigo")]
@@ -347,6 +350,25 @@ def esc_integracion_api(conv) -> Contexto:
             else:
                 os.environ[k] = v
     return ctx
+
+
+def justifica_con_el_cliente(respuesta: str, factores: list[str]) -> dict:
+    """Comprueba con el juez si la respuesta apoya la recomendación en algún rasgo del propio cliente
+    (los factores del modelo) y no solo en las bondades del producto."""
+    if not factores:
+        return {"cumple": False, "veredicto": "sin factores", "motivo": "el modelo no entregó factores"}
+    prompt = ("Un asistente de cobranza recomendó una alternativa de pago. Estos son los rasgos del comportamiento del cliente que "
+              "sustentan la recomendación:\n- " + "\n- ".join(factores) + "\n\nRespuesta del asistente:\n<<<" + respuesta[:1500] + ">>>\n\n"
+              "¿La respuesta apoya la recomendación en al menos uno de esos rasgos del cliente (su historial, su comportamiento de pago, "
+              "su mora o alternativas anteriores), aunque esté dicho con otras palabras? Si solo describe las ventajas del producto, la "
+              "respuesta es no. Responde JSON con las claves usa_rasgo_del_cliente (bool) y motivo (una frase).")
+    try:
+        out = llm_juez().invoke(prompt, generation_config={"response_mime_type": "application/json"})
+        texto = out.content if isinstance(out.content, str) else "".join(b.get("text", "") for b in out.content if isinstance(b, dict))
+        d = json.loads(texto)
+        return {"cumple": bool(d.get("usa_rasgo_del_cliente")), "veredicto": "sí" if d.get("usa_rasgo_del_cliente") else "no", "motivo": str(d.get("motivo", ""))[:200]}
+    except Exception as e:  # noqa: BLE001
+        return {"cumple": False, "veredicto": "juez no disponible", "motivo": f"{type(e).__name__}"}
 
 
 # ------------------------------------------------------------------ calidad

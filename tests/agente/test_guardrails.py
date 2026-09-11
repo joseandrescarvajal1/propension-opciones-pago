@@ -38,6 +38,8 @@ def test_entrada_reglas(mensaje, categoria, permitido):
     ("Listo, tu acuerdo quedó registrado.", True, {"registros_turno": 0}, False, "sin que una herramienta"),
     ("Listo, tu acuerdo quedó registrado para el 19 de enero.", True, {"registros_turno": 1}, True, ""),
     ("Te envié un código por SMS, escríbelo aquí.", False, {"otp_enviado_turno": 0, "codigo_pendiente": False}, False, "sin que se haya enviado"),
+    ("Escríbeme el código de 6 dígitos que te acabamos de enviar por SMS.", False, {"otp_enviado_turno": 0, "codigo_pendiente": False}, False, "sin que se haya enviado"),
+    ("Escríbeme el código de 6 dígitos que te acabamos de enviar por SMS.", False, {"otp_enviado_turno": 1}, True, ""),
     ("Te envié un código por SMS, escríbelo aquí.", False, {"otp_enviado_turno": 1}, True, ""),
     ("La cédula 1099887766 de tu hermano no la puedo consultar.", True, {"cedula": "1000000001"}, False, "cédula ajenos"),
 ])

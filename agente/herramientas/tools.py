@@ -138,7 +138,8 @@ def consultar_deuda() -> dict:
 def evaluar_siguiente_accion(id_obligacion: str | None = None) -> dict:
     """Decide la siguiente mejor acción para el cliente verificado (ACUERDO_PAGO, OFRECER_OPCION, SIN_OFERTA o GESTOR_HUMANO)
     aplicando las reglas de negocio y el modelo de propensión. Devuelve el motivo, las ofertas autorizadas (las únicas que
-    puedes proponer), la opción recomendada con su explicación y los factores del modelo en lenguaje de negocio.
+    puedes proponer), la opción recomendada y `motivos_del_cliente`: los rasgos del comportamiento de este cliente que
+    explican la recomendación y que debes usar al justificarla.
     Requiere identidad verificada. Si no se indica obligación, usa la de mayor mora."""
     t0 = time.perf_counter()
     err = _requiere_verificacion()
@@ -152,7 +153,10 @@ def evaluar_siguiente_accion(id_obligacion: str | None = None) -> dict:
     if r["acuerdo"]:
         autorizadas.append({"tipo": "ACUERDO", "codigo": "ACUERDO", "nombre": "Acuerdo de pago", "fecha_limite": r["acuerdo"]["fecha_limite"], "valor_sugerido": r["acuerdo"]["valor_sugerido"], "valor_minimo": r["acuerdo"]["valor_minimo"]})
     e["nba"], e["ofertas_autorizadas"] = r, autorizadas
-    salida = {**r, "ofertas_autorizadas": autorizadas}
+    motivos = [{"factor": f["descripcion"], "peso": abs(f["contribucion"]), "a_favor": f["sentido"] == "sube"} for f in r["propension"].get("factores", [])]
+    salida = {**r, "ofertas_autorizadas": autorizadas,
+              "motivos_del_cliente": motivos,
+              "como_usar_los_motivos": "Son los rasgos del comportamiento de este cliente que más pesan en la recomendación. Cita al menos uno, reescrito con tus palabras y en tono natural, cuando propongas la acción. No menciones pesos, porcentajes ni de dónde salen."}
     _traza("evaluar_siguiente_accion", {"id_obligacion": r["id_obligacion"]}, {"accion": r["accion"], "motivo": r["motivo"], "prob": r["propension"]["prob"], "fuente": r["propension"]["fuente"], "autorizadas": [a["codigo"] for a in autorizadas]}, t0)
     return salida
 
