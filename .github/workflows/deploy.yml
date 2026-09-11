@@ -10,7 +10,22 @@ name: deploy
 on:
   push:
     branches: [dev, stage, main]
-    paths-ignore: ["docs/**", "notebooks/**", "**.md"]   # cambios solo de documentación no despliegan
+    # Cambios que no entran en la imagen de la API del modelo no la redespliegan: documentación,
+    # notebooks y todo lo de la Parte 2 (el agente y su front se despliegan con
+    # deploy/cloudbuild_agente.yaml y deploy/cloudbuild_front.yaml). Las pruebas de esos cambios
+    # corren igual en el CI de cada pull request.
+    paths-ignore:
+      - "docs/**"
+      - "notebooks/**"
+      - "**.md"
+      - "agente/**"
+      - "tests/agente/**"
+      - "deploy/Dockerfile.agente"
+      - "deploy/Dockerfile.front"
+      - "deploy/service_agente.yaml"
+      - "deploy/service_front.yaml"
+      - "deploy/cloudbuild_agente.yaml"
+      - "deploy/cloudbuild_front.yaml"
 
 permissions:
   contents: read

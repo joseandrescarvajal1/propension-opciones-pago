@@ -1,0 +1,44 @@
+# Cloud Run del front del sandbox (Streamlit). Público en internet pero con contraseña
+# (FRONT_PASSWORD en Secret Manager); los datos son simulados. La API del agente sigue exigiendo
+# token de identidad IAM, que este servicio obtiene con su cuenta de servicio.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: front-cobranza-__ENV__
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "__MIN_INSTANCES__"
+        autoscaling.knative.dev/maxScale: "2"
+        run.googleapis.com/cpu-throttling: "false"     # Streamlit mantiene un websocket abierto
+      labels:
+        run.googleapis.com/startupProbeType: Default
+    spec:
+      containerConcurrency: 20
+      timeoutSeconds: 3600                             # sesiones largas de demostración
+      serviceAccountName: front-cobranza-sa@__PROJECT_ID__.iam.gserviceaccount.com   # roles: run.invoker sobre el agente, secretmanager.secretAccessor
+      containers:
+        - image: __IMAGE__
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          env:
+            - name: AGENTE_API_URL
+              value: __AGENTE_API_URL__
+            - name: AGENTE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agente-api-key
+                  key: latest
+            - name: FRONT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: front-password
+                  key: latest

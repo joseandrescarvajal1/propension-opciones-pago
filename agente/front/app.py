@@ -3,9 +3,12 @@
 Habla con la API del agente (AGENTE_API_URL, por defecto http://127.0.0.1:8001) con la clave AGENTE_API_KEY.
 Pestañas: WhatsApp (reactivo y proactivo por cliente), Campaña proactiva (lote), Ficha del cliente, Trazas y gestor.
 
-Uso:
+Uso en local:
     uvicorn agente.api.main:app --port 8001          (en otra terminal)
     streamlit run agente/front/app.py
+
+En Cloud Run se despliega con deploy/Dockerfile.front y deploy/service_front.yaml: obtiene el token de
+identidad de su cuenta de servicio y protege el acceso con FRONT_PASSWORD (Secret Manager).
 """
 
 from __future__ import annotations
@@ -30,18 +33,46 @@ st.set_page_config(page_title="Sandbox agente de cobranza", page_icon="💬", la
 
 @st.cache_data(ttl=3000)
 def _token_identidad() -> str | None:
-    """Cloud Run exige un token de identidad IAM además de la clave; en local se obtiene con gcloud."""
+    """La API del agente exige token de identidad IAM. En Cloud Run lo da la cuenta de servicio
+    (servidor de metadata); en local, gcloud."""
     if ".run.app" not in API:
         return None
-    import subprocess
-    for cmd in (os.environ.get("GCLOUD", "gcloud"), r"C:\Users\USUARIO\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"):
-        try:
-            tok = subprocess.run([cmd, "auth", "print-identity-token"], capture_output=True, text=True, timeout=60).stdout.strip()
-            if tok:
-                return tok
-        except Exception:  # noqa: BLE001
-            continue
+    try:
+        import google.auth.transport.requests
+        import google.oauth2.id_token
+        return google.oauth2.id_token.fetch_id_token(google.auth.transport.requests.Request(), API)
+    except Exception:  # noqa: BLE001 - fuera de GCP: gcloud
+        import subprocess
+        for cmd in (os.environ.get("GCLOUD", "gcloud"), r"C:\Users\USUARIO\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"):
+            try:
+                tok = subprocess.run([cmd, "auth", "print-identity-token"], capture_output=True, text=True, timeout=60).stdout.strip()
+                if tok:
+                    return tok
+            except Exception:  # noqa: BLE001
+                continue
     return None
+
+
+def puerta() -> bool:
+    """Contraseña de acceso cuando el front se publica en internet (FRONT_PASSWORD).
+    Sin ella el front queda abierto, que es aceptable solo en local."""
+    clave = os.environ.get("FRONT_PASSWORD")
+    if not clave:
+        return True
+    if st.session_state.get("acceso_ok"):
+        return True
+    st.title("Sandbox · Agente de cobranza")
+    st.caption("Prototipo con clientes simulados. Ingresa la contraseña de la demostración.")
+    with st.form("acceso"):
+        entrada = st.text_input("Contraseña", type="password")
+        if st.form_submit_button("Entrar"):
+            import hmac
+            if hmac.compare_digest(entrada, clave):
+                st.session_state["acceso_ok"] = True
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
+    return False
 
 
 def api(metodo: str, ruta: str, **kw):
@@ -75,6 +106,9 @@ def burbuja(m: dict):
                 box-shadow:0 1px 1px rgba(0,0,0,.15);font-size:14px;color:#111"><div style="font-size:10px;color:#666">{'Cliente' if entrante else 'Bancolombia'} {etiqueta} · {m['creado'][11:19]}</div>{m['texto']}</div></div>""",
                 unsafe_allow_html=True)
 
+
+if not puerta():
+    st.stop()
 
 st.title("Sandbox · Agente de cobranza (Parte 2)")
 st.caption(f"API del agente: {API}")
