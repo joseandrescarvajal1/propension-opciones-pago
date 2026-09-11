@@ -1507,6 +1507,17 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
     -> paquete v4 en Cloud Storage
 - El front local sigue disponible para trabajar sin red: basta con no fijar AGENTE_API_URL.
 
+14.12 Ajuste del disparador de despliegue
+- Problema detectado al ir a promover el front: el flujo de trabajo deploy.yml se dispara con
+  cualquier cambio fuera de docs, notebooks y .md, así que un cambio que solo toca el agente o su
+  front redesplegaba la API del modelo. Eso crea una revisión nueva en producción con el canario
+  al 10 %, deshaciendo la promoción al 100 % que se acababa de hacer, y sin ninguna razón: el
+  código de la Parte 2 no entra en la imagen del modelo.
+- Corrección: se añadieron a paths-ignore agente/**, tests/agente/** y los archivos de despliegue
+  propios del agente y del front. Esos componentes se despliegan con sus propios Cloud Build
+  (deploy/cloudbuild_agente.yaml y deploy/cloudbuild_front.yaml). Las pruebas siguen corriendo:
+  ci.yml se ejecuta en cada pull request sobre todos los archivos.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
