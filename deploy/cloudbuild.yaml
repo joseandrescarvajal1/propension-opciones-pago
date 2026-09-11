@@ -1,0 +1,38 @@
+# Cloud Build: construye la imagen, la sube a Artifact Registry y despliega en Cloud Run.
+# Se invoca desde GitHub Actions (deploy.yml) o a mano:
+#   gcloud builds submit --config deploy/cloudbuild.yaml --substitutions=_ENV=dev,_SHORT_SHA=$(git rev-parse --short HEAD)
+substitutions:
+  _ENV: dev
+  _REGION: us-central1
+  _REPO: propension
+  _SERVICE: propension-api
+  _MODELO_RUTA: gs://${PROJECT_ID}-modelos/modelos/v4
+  _MIN_INSTANCES: "0"
+  _SHORT_SHA: manual
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "deploy/Dockerfile", "-t", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}", "."]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}"]
+
+  - id: render
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        sed -e "s|__ENV__|${_ENV}|g"             -e "s|__IMAGE__|${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}|g"             -e "s|__PROJECT_ID__|${PROJECT_ID}|g"             -e "s|__MODELO_RUTA__|${_MODELO_RUTA}|g"             -e "s|__MIN_INSTANCES__|${_MIN_INSTANCES}|g"             deploy/service.yaml > /workspace/service.rendered.yaml
+
+  - id: deploy
+    name: gcr.io/cloud-builders/gcloud
+    args: ["run", "services", "replace", "/workspace/service.rendered.yaml", "--region", "${_REGION}"]
+
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,30 @@
+# Credenciales
+.env
+.kaggle/
+
+# Datos crudos y procesados
+data/
+
+# Salidas: predicciones, submissions, tablas de resultados
+outputs/
+
+# Modelos entrenados y seguimiento de experimentos
+models/
+mlflow.db
+mlruns/
+catboost_info/
+**/catboost_info/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
