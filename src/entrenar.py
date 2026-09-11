@@ -87,14 +87,18 @@ def main() -> None:
     final.fit(train[feats], y, categorical_feature=cat)
     p_oot = final.predict_proba(test[feats])[:, 1]
 
-    # 4. paquete y archivos
+    # 4. paquete y archivos (con importancia SHAP global: media del |valor SHAP| en una muestra de diciembre)
     carpeta = ROOT / "models" / args.version
     carpeta.mkdir(parents=True, exist_ok=True)
     final.booster_.save_model(str(carpeta / "modelo.txt"))
     niveles = final.booster_.pandas_categorical or []
+    muestra = train.loc[m_va, feats].sample(min(20000, int(m_va.sum())), random_state=42)
+    contrib = np.abs(final.booster_.predict(muestra, pred_contrib=True)[:, :-1]).mean(axis=0)
+    importancia_shap = {f: round(float(v), 5) for f, v in sorted(zip(feats, contrib), key=lambda x: -x[1])}
     info = {"version": args.version, "modelo": "lightgbm", "umbral": umbral, "n_features": len(feats), "features": feats, "categoricas": cat,
             "niveles_categoricas": {c: [str(x) for x in lv] for c, lv in zip(cat, niveles)}, "metricas": {k: round(v, 4) if isinstance(v, float) else v for k, v in met.items()},
             "hiperparametros": {k: v for k, v in PARAMS.items() if k not in ("verbose", "n_jobs")},
+            "importancia_shap": importancia_shap,
             "entrenamiento": {"script": "src/entrenar.py", "datos": "2023-08..2023-12", "validacion": "temporal: train <= 2023-11, umbral y métricas en 2023-12", "fecha": date.today().isoformat()}}
     (carpeta / "modelo_info.json").write_text(json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8")
     ss = pd.read_csv(ROOT / "data" / "sample_submission.csv", usecols=["ID"])

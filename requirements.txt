@@ -20,3 +20,4 @@ pytest
 pytest-cov
 ruff
 google-cloud-storage
+shap

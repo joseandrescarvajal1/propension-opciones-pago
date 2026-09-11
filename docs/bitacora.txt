@@ -1072,6 +1072,20 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   stage -> main y aprobación para un segundo despliegue que ejercite el reparto 10/90.
 - Los tres ambientes existen y responden: dev, stage y prod, cada uno con su servicio de
   Cloud Run, la misma imagen por commit y el modelo v4 desde el bucket.
+
+12.10 Segundo despliegue a producción con tráfico gradual (2026-09-11, 18:03 UTC)
+- PR #4 (dev -> stage) y PR #5 (stage -> main) fusionados por el usuario; incluyen la
+  corrección del paso de tráfico, features.py, entrenar.py, monitoreo mensual y las 44
+  pruebas. stage: deploy OK con prueba de humo. main: el run quedó en espera, el usuario
+  aprobó en el environment prod, y el pipeline completó: pruebas, WIF, Cloud Build,
+  prueba de humo y TRÁFICO GRADUAL en éxito.
+- Cloud Run prod: revisión 00002 (imagen del commit de main) con el 10 % del tráfico y
+  revisión 00001 con el 90 %. Ambas responden con el mismo modelo v4 y las mismas
+  probabilidades. Para pasar al 100 %:
+  gcloud run services update-traffic propension-api-prod --region us-central1 --to-latest
+- Con esto el ciclo de despliegue continuo queda demostrado de punta a punta: push a dev
+  -> despliegue automático; PR a stage -> despliegue con prueba de humo; PR a main ->
+  compuerta manual -> despliegue canario 10/90 -> promoción manual al 100 %.
 12.9 Entrenamiento reproducible y monitoreo (2026-09-11, tarde)
 - src/features.py: las funciones de los notebooks 01 y 06 (esqueleto, prob_, pag_, obl_,
   pagcli_, cli_, lag_, lagcli_, fe_) en un módulo, con construir_dataset(data_dir) que
@@ -1120,20 +1134,59 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   GCP (proyecto, bucket, Secret Manager, WIF) y documento de arquitectura.
 
 ======================================================================
-PENDIENTE / PRÓXIMOS PASOS
+ETAPA 13. EXPLICABILIDAD CON SHAP (2026-09-11, tarde)
 ======================================================================
-- Mejor en Kaggle hasta ahora: LightGBM temporal v4, 0.71421. Sin envíos hasta las
-  19:00 (reinicio a medianoche UTC).
-- En curso: notebook 08 (importancia y subconjuntos) y notebook 09 (multiclase + ruta).
-  Con los resultados de ambos en diciembre se decide qué subir a las 19:00.
-- Plan de mejoras acordado: importancia por ganancia + permutación en X_val, poda y
-  reentrenamiento; luego SHAP (explicabilidad, insumo del agente). RL (Q-learning) no va en
-  la Parte 1; se evaluará como módulo experimental del agente sobre un simulador. Pendientes que se mencionaron: comparar 133 vs 77
-  variables, permutación en validación, regresión logística como referencia, tratamiento
-  de categóricas en la selección. SHAP se deja para la parte del agente.
-- Parte MLOps: pipeline reproducible, versionado de datos y modelo, monitoreo de deriva.
-- Parte 2: sistema agéntico (50 % de la nota).
-- Documento técnico (4.000 caracteres), arquitectura, declaración de uso de IA generativa.
+13.1 Diseño (SHAP como parte del ciclo, no como análisis suelto)
+- Los valores SHAP dependen del modelo: cambian con cada versión. Por eso se calculan con
+  el método nativo de LightGBM (TreeSHAP, predict con pred_contrib) y viajan con la
+  versión: (a) entrenar.py guarda en modelo_info.json la importancia SHAP global (media
+  del |SHAP| en 20,000 filas de diciembre) de cada paquete; (b) la API expone
+  POST /explain?k=5 que devuelve, por obligación, probabilidad, valor base y las k
+  variables con mayor contribución (valor, contribución en logit y sentido sube/baja),
+  siempre del modelo cargado y sin librerías adicionales en la imagen. Verificado:
+  sigmoide(base + suma de contribuciones) reproduce la probabilidad exacta.
+- src/inferencia.py: contribuciones() y explicar(). Pruebas: 5 nuevas (reconstrucción de
+  la probabilidad, k factores ordenados, /explain con y sin clave, coincidencia con
+  /predict). Batería: 49 pruebas, cobertura 93 %.
+- El paquete v4 del bucket se actualizó con importancia_shap.
+
+13.2 Notebook 10_shap (modelo v4, 20,000 filas de diciembre; grupo MLflow 10_shap_v4)
+- Valor base medio -0.097 (prob 0.476); probabilidad media 0.468; tasa real 0.465: el
+  modelo está calibrado en promedio.
+- Importancia global (media |SHAP|): las 10 primeras concentran el 36 % y las 25 primeras
+  el 63 %. Top 5: pag_marca_pago_t1 (0.184), fe_meses_desde_acepto_cli (0.175),
+  pagcli_cuota_total_t1 (0.130), lagcli_tasa_acepto (0.129), prob_prob_propension_t1
+  (0.124). Dos de las cinco son variables nuevas del 06.
+- Coincidencia con la permutación del 08: 15 variables comunes en el top 20;
+  correlación de Spearman entre puestos 0.78.
+- Ejemplo de /explain para un cliente cerca del umbral: baja por lagcli_tasa_acepto 0.33
+  (-0.249), sube por pag_marca_pago_t1 = PAGO_MENOS (+0.202), baja por fe_mora_x_opciones
+  = 0 (-0.128) y fe_meses_desde_pago_completo = 1 (-0.108), sube por región ANTIOQUIA
+  (+0.104). Es la frase que el agente puede dar al gestor.
+- Figuras registradas: importancia global (barras + beeswarm), dependencias de las 4
+  numéricas principales, cascadas de tres clientes (alta, umbral, baja), SHAP vs
+  permutación. Tabla completa en outputs/importancia_shap_v4.csv.
+
+======================================================================
+PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 13:10)
+======================================================================
+Parte 1 (modelo + MLOps), lo que falta:
+- Explicabilidad: HECHA (etapa 13). El agente consumirá /explain.
+- Documento de arquitectura (entregable 5): diagrama del ciclo completo con lo construido
+  (datos, features t-1, entrenamiento reproducible, MLflow, paquete en bucket, API, Docker,
+  Cloud Run por ambientes, CI/CD con compuertas, monitoreo PSI, reentreno) y evoluciones
+  no implementadas. Base: docs/plan_mlops.md y esta bitácora.
+- Documento técnico (entregable 1, máximo 4,000 caracteres) con la declaración de uso de
+  IA generativa. Base: esta bitácora.
+- Archivo final de resultados: outputs/resultado_prueba.csv ya existe (paquete v5 =
+  modelo v4, F1 público 0.71421); confirmar que sea la versión a entregar.
+- Producción: la revisión 00002 está al 10 % del tráfico; promover al 100 % cuando se
+  decida (gcloud run services update-traffic propension-api-prod --to-latest).
+- Presentación ejecutiva (entregable 2), al final.
+Mejora del modelo (aparcada por decisión del usuario): variables de ruta y umbral por
+segmento no aportaron; la vía pendiente es tratar la ambigüedad de la clase e ("sin
+oferta"), que es el techo del F1.
+Parte 2 (sistema agéntico, 50 % de la nota): no iniciada.
 
 ======================================================================
 DECLARACIÓN DE USO DE IA GENERATIVA (en construcción)

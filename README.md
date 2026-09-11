@@ -6,10 +6,10 @@ Modelo que estima, con un mes de anticipación, la probabilidad de que una oblig
 
 | Carpeta | Contenido |
 |---|---|
-| `notebooks/` | Exploración (02), construcción del dataset (01), modelos (03 a 09). Cada notebook registra sus experimentos en MLflow. |
+| `notebooks/` | Exploración (02), construcción del dataset (01), modelos (03 a 09), explicabilidad SHAP (10). Cada notebook registra sus experimentos en MLflow. |
 | `src/` | `download_data.py` (descarga), `features.py` (variables con corte t-1), `entrenar.py` (entrenamiento reproducible), `inferencia.py` (predicción), `monitoreo.py` y `monitoreo_mensual.py` (PSI y desempeño), `tracking.py` (MLflow), `mlflow_ui.py`. |
-| `api/` | API FastAPI: `/health`, `/version`, `/predict`. |
-| `tests/` | 44 pruebas unitarias con pytest (variables y no fuga temporal, inferencia, API, monitoreo). |
+| `api/` | API FastAPI: `/health`, `/version`, `/predict`, `/explain` (valores SHAP por obligación). |
+| `tests/` | 49 pruebas unitarias con pytest (variables y no fuga temporal, inferencia, API, monitoreo). |
 | `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual). |
 | `.github/workflows/` | `ci.yml` (lint, pruebas, imagen) y `deploy.yml` (despliegue por rama). |
 | `docs/` | Bitácora del proyecto, texto de la competencia, diccionarios, plan de MLOps. |
@@ -46,7 +46,7 @@ API_KEY=mi-clave MODELO_RUTA=models/v4 uvicorn api.main:app --port 8080
 curl -H "X-API-Key: mi-clave" http://127.0.0.1:8080/version
 ```
 
-`POST /predict` recibe `{"obligaciones": [{"ID": "...", "variables": {...}}], "umbral": null}` y devuelve probabilidad y clase por obligación.
+`POST /predict` recibe `{"obligaciones": [{"ID": "...", "variables": {...}}], "umbral": null}` y devuelve probabilidad y clase por obligación. `POST /explain?k=5` recibe lo mismo y devuelve, además, las k variables que más empujan cada probabilidad (valores SHAP del modelo cargado, calculados por LightGBM sin librerías adicionales).
 
 ### Pruebas y contenedor
 

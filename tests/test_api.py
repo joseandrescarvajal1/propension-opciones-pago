@@ -73,3 +73,22 @@ def test_limite_de_filas(cliente, cabecera, modelo, monkeypatch):
     monkeypatch.setattr(m, "MAX_FILAS", 2)
     r = cliente.post("/predict", json=_peticion(modelo, 3), headers=cabecera)
     assert r.status_code == 413
+
+
+def test_explain(cliente, cabecera, modelo):
+    r = cliente.post("/explain?k=3", json=_peticion(modelo, 2), headers=cabecera)
+    assert r.status_code == 200
+    d = r.json(); assert d["n"] == 2 and d["k"] == 3 and d["version_modelo"] == "v4"
+    e = d["explicaciones"][0]; assert e["ID"] == "1#2#0" and len(e["factores"]) == 3 and e["var_rpta_alt"] in (0, 1)
+    assert set(e["factores"][0]) == {"variable", "valor", "contribucion", "sentido"}
+
+
+def test_explain_coincide_con_predict(cliente, cabecera, modelo):
+    pet = _peticion(modelo, 3)
+    p = cliente.post("/predict", json=pet, headers=cabecera).json()["predicciones"]
+    e = cliente.post("/explain", json=pet, headers=cabecera).json()["explicaciones"]
+    assert [round(x["prob_uno"], 5) for x in p] == [round(x["prob_uno"], 5) for x in e]
+
+
+def test_explain_sin_api_key(cliente, modelo):
+    assert cliente.post("/explain", json=_peticion(modelo, 1)).status_code == 401
