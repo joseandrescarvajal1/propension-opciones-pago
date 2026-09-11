@@ -56,7 +56,8 @@ def _token_identidad() -> str | None:
 def puerta() -> bool:
     """Contraseña de acceso cuando el front se publica en internet (FRONT_PASSWORD).
     Sin ella el front queda abierto, que es aceptable solo en local."""
-    clave = os.environ.get("FRONT_PASSWORD")
+    # se limpia la marca de orden de bytes y los saltos: un secreto guardado desde PowerShell puede traerlos
+    clave = (os.environ.get("FRONT_PASSWORD") or "").lstrip("﻿").strip()
     if not clave:
         return True
     if st.session_state.get("acceso_ok"):
@@ -67,7 +68,8 @@ def puerta() -> bool:
         entrada = st.text_input("Contraseña", type="password")
         if st.form_submit_button("Entrar"):
             import hmac
-            if hmac.compare_digest(entrada, clave):
+            # se comparan bytes: compare_digest sobre str falla si el texto trae caracteres no ASCII
+            if hmac.compare_digest((entrada or "").lstrip("﻿").strip().encode("utf-8"), clave.encode("utf-8")):
                 st.session_state["acceso_ok"] = True
                 st.rerun()
             else:

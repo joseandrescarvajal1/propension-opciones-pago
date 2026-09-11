@@ -1566,6 +1566,21 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
   fallo de seguridad que ninguna prueba unitaria habría visto, porque nacía de una alucinación del
   modelo de lenguaje; y la corrección se fijó luego como prueba determinista para que no reaparezca.
 
+14.16 Error al entrar al front y corrección
+- Síntoma: al escribir la contraseña, el front respondía
+  "TypeError: comparing strings with non-ASCII characters is not supported" en hmac.compare_digest.
+- Causa: el secreto front-password se creó canalizando una variable desde PowerShell, que escribió
+  una marca de orden de bytes (ï»¿) al inicio y un 
+ al final. Esa marca es un carácter
+  no ASCII invisible, y hmac.compare_digest sobre cadenas solo admite ASCII. La contraseña que
+  escribía el usuario era correcta; lo que estaba mal era el valor guardado.
+- Correcciones: (1) versión 2 del secreto con los bytes exactos, escrita con Python para evitar la
+  codificación de PowerShell; (2) la puerta de acceso compara bytes en vez de cadenas, descarta la
+  marca de orden de bytes y aplica strip, de modo que ni un secreto mal guardado ni un pegado con
+  espacios vuelven a romperla. Verificado con cinco casos, incluido el del secreto sucio.
+- Lección aplicable al resto del proyecto: los secretos se escriben desde un archivo generado con
+  Python, nunca canalizando texto desde PowerShell.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
