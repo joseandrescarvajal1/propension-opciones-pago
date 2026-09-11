@@ -1518,6 +1518,21 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
   (deploy/cloudbuild_agente.yaml y deploy/cloudbuild_front.yaml). Las pruebas siguen corriendo:
   ci.yml se ejecuta en cada pull request sobre todos los archivos.
 
+14.13 Fallo del CI en el PR dev -> stage y corrección
+- El CI del pull request falló en el paso de instalación de dependencias:
+  "Cannot install google-auth==2.41.1 and langchain-google-genai because these package versions
+  have conflicting dependencies"; google-genai 2.20 a 2.23 exige google-auth >= 2.56.
+- Causa: al añadir google-auth a agente/requirements.txt (para que el front obtenga su token por
+  el servidor de metadata) se fijó la versión 2.41.1 sin comprobarla contra el entorno local,
+  donde pip ya había resuelto 2.58.0. En local no se notó porque la librería ya estaba instalada.
+- Corrección: google-auth==2.58.0 en agente/requirements.txt y en deploy/Dockerfile.front.
+  Verificado reproduciendo los tres pasos del CI con pip install --dry-run: api/requirements.txt,
+  agente/requirements.txt y las herramientas de prueba resuelven sin conflicto.
+- Nota: api/ y agente/ fijan versiones distintas de fastapi, pydantic y numpy. No es un problema
+  porque el CI las instala en pasos separados (la segunda actualiza a la más reciente, que es la
+  que se usa en local y con la que pasan las 123 pruebas) y porque la imagen de la API del modelo
+  se construye solo con api/requirements.txt, de modo que producción no se ve afectada.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
