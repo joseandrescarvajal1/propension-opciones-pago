@@ -1,4 +1,4 @@
-# Lo que NO se sube a Cloud Build. Solo hacen falta api/, src/inferencia.py y deploy/.
+# Lo que NO se sube a Cloud Build. Hacen falta api/, src/inferencia.py, deploy/ y agente/ (con agente/sandbox/sandbox_base.db).
 .git/
 .github/
 .env
@@ -24,3 +24,9 @@ src/catboost_v2_oot.py
 .pytest_cache/
 .ruff_cache/
 .coverage
+agente/sandbox/sandbox.db
+agente/sandbox/*.db-wal
+agente/sandbox/*.db-shm
+agente/sandbox/checkpoints*.db
+agente/front/
+agente/pruebas/

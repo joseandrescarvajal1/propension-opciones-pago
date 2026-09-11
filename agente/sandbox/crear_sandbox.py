@@ -63,6 +63,7 @@ def fecha(delta_dias: int) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--salida", default=None)
+    ap.add_argument("--base", action="store_true", help="además, escribe sandbox_base.db: copia limpia que se incluye en la imagen de Cloud Run")
     args = ap.parse_args()
     rng = np.random.RandomState(2024)
 
@@ -180,6 +181,22 @@ def main() -> None:
                          "opciones_preaprobadas": opciones, "opciones_aplicadas": [c for c, _ in aplicadas], "acuerdos": [e for *_, e in acuerdos], "restricciones": [t for t, _ in restricciones]})
 
     (salida.parent / "perfiles.json").write_text(json.dumps({"hoy_sandbox": HOY, "escenarios": ESCENARIOS, "catalogo_opciones": CATALOGO, "clientes": perfiles}, indent=2, ensure_ascii=False), encoding="utf-8")
+    if args.base:  # copia limpia para la imagen: sin conversaciones, OTP, trazas ni registros del agente
+        import sqlite3
+        base = salida.parent / "sandbox_base.db"
+        if base.exists():
+            base.unlink()
+        destino = sqlite3.connect(str(base))
+        con.backup(destino)
+        for tabla in ("otp", "mensajes", "trazas", "escalamientos"):
+            destino.execute(f"DELETE FROM {tabla}")
+        destino.execute("DELETE FROM acuerdos WHERE canal = 'agente'")
+        destino.execute("DELETE FROM opciones_aplicadas WHERE canal = 'agente'")
+        destino.commit()
+        destino.execute("VACUUM")
+        destino.close()
+        print(f"copia base para la imagen: {base}")
+
     n = {t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("clientes", "obligaciones", "opciones_preaprobadas", "opciones_aplicadas", "acuerdos", "restricciones")}
     print(f"sandbox creado en {salida} | hoy = {HOY} | {n}")
     print(pd.Series([p["escenario"] for p in perfiles]).value_counts().to_string())

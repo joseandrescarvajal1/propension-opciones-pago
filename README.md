@@ -63,13 +63,21 @@ En Git Bash de Windows, anteponer `MSYS_NO_PATHCONV=1` al `docker run` para que 
 
 ```bash
 pip install -r agente/requirements.txt
-python agente/sandbox/crear_sandbox.py                   # 40 clientes simulados en agente/sandbox/sandbox.db
+python agente/sandbox/crear_sandbox.py --base            # 40 clientes simulados; --base genera además la copia que viaja en la imagen
 uvicorn agente.api.main:app --port 8001                  # API del agente (X-API-Key = AGENTE_API_KEY)
 streamlit run agente/front/app.py                        # front del sandbox en http://localhost:8501
 python agente/pruebas/escenarios.py                      # escenarios con el LLM real; resultados en outputs/pruebas_agente*.csv y MLflow
 ```
 
 Requiere el proyecto de GCP con Vertex AI habilitado y credenciales de aplicación (`gcloud auth application-default login`); no hay llaves de LLM. El agente llama a la API del modelo (`MODELO_API_URL`) y, si no responde, al paquete local `models/v4`. Variables en `.env.example`.
+
+El agente también está desplegado en Cloud Run para demostración (`agente-cobranza-demo`, una instancia, sandbox activo, modelo de producción). El front local puede apuntar allí:
+
+```bash
+AGENTE_API_URL=https://agente-cobranza-demo-amdvve4e3q-uc.a.run.app streamlit run agente/front/app.py
+```
+
+El servicio exige token de identidad IAM (`run.invoker`) además de la clave de API; el front lo obtiene con `gcloud`. Para construir y desplegar: `gcloud builds submit --config deploy/cloudbuild_agente.yaml --substitutions=_ENV=demo,_SHORT_SHA=$(git rev-parse --short HEAD)`.
 
 ## Flujo de ramas y despliegue
 

@@ -15,8 +15,8 @@ RUN pip install -r /tmp/requirements.txt google-cloud-storage==2.19.0
 
 COPY agente/ /app/agente/
 COPY src/inferencia.py /app/src/inferencia.py
-COPY models/ /app/models/
-# La base del sandbox y los checkpoints viven en /data (volumen o disco efímero); en producción se reemplazan por Cloud SQL / Firestore.
+# El paquete del modelo (reserva local) se lee del bucket con MODELO_RUTA=gs://...; la base del sandbox viaja en la imagen
+# como sandbox_base.db y se copia a /data al arrancar. En producción real se reemplazan por Cloud SQL / Firestore.
 RUN mkdir -p /data && chown -R app:app /app /data
 ENV SANDBOX_DB=/data/sandbox.db AGENTE_CHECKPOINTS=/data/checkpoints.db
 USER app

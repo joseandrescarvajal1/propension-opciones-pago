@@ -27,6 +27,39 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 _modelo_local = None
+_token_cache: dict[str, tuple[str, float]] = {}
+
+
+def _token_identidad(url: str) -> str | None:
+    """Token de identidad IAM para llamar a Cloud Run: MODELO_API_ID_TOKEN si está fijado; si no, la cuenta de servicio
+    (metadata de GCP) y, en local, gcloud. Se cachea 50 minutos."""
+    fijo = os.environ.get("MODELO_API_ID_TOKEN")
+    if fijo:
+        return fijo
+    if ".run.app" not in url:
+        return None
+    audiencia = url.split("/")[0] + "//" + url.split("/")[2] if "://" in url else url
+    tok, vence = _token_cache.get(audiencia, (None, 0.0))
+    if tok and time.time() < vence:
+        return tok
+    tok = None
+    try:
+        import google.auth.transport.requests
+        import google.oauth2.id_token
+        tok = google.oauth2.id_token.fetch_id_token(google.auth.transport.requests.Request(), audiencia)
+    except Exception:  # noqa: BLE001 - sin cuenta de servicio (local): gcloud
+        import subprocess
+        gc = os.environ.get("GCLOUD", "gcloud")
+        for cmd in (gc, r"C:\Users\USUARIO\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"):
+            try:
+                tok = subprocess.run([cmd, "auth", "print-identity-token"], capture_output=True, text=True, timeout=60).stdout.strip() or None
+                if tok:
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+    if tok:
+        _token_cache[audiencia] = (tok, time.time() + 50 * 60)
+    return tok
 
 
 def _local():
@@ -42,10 +75,17 @@ def _por_api(id_obligacion: str, variables: dict, k: int) -> dict:
     if not url:
         raise RuntimeError("MODELO_API_URL no configurada")
     cab = {"X-API-Key": os.environ.get("MODELO_API_KEY") or os.environ.get("API_KEY", "")}
-    tok = os.environ.get("MODELO_API_ID_TOKEN")  # Cloud Run con IAM: token de identidad
+    tok = _token_identidad(url)  # Cloud Run con IAM: token de identidad
     if tok:
         cab["Authorization"] = f"Bearer {tok}"
-    r = httpx.post(f"{url}/explain", params={"k": k}, json={"obligaciones": [{"ID": id_obligacion, "variables": variables}]}, headers=cab, timeout=8.0)
+    r = httpx.post(f"{url}/explain", params={"k": k}, json={"obligaciones": [{"ID": id_obligacion, "variables": variables}]}, headers=cab, timeout=15.0)
+    if r.status_code == 404:  # la versión desplegada de la API aún no expone /explain: probabilidad sin factores
+        r = httpx.post(f"{url}/predict", json={"obligaciones": [{"ID": id_obligacion, "variables": variables}]}, headers=cab, timeout=15.0)
+        r.raise_for_status()
+        d = r.json()
+        pr = d["predicciones"][0]
+        return {"prob_uno": pr["prob_uno"], "var_rpta_alt": pr["var_rpta_alt"], "umbral": d["umbral"], "factores": [], "version_modelo": d["version_modelo"], "fuente": "api",
+                "sin_explicacion": "la API desplegada no expone /explain; se usó /predict"}
     r.raise_for_status()
     d = r.json()
     e = d["explicaciones"][0]

@@ -1398,6 +1398,49 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
 - Nota técnica: agente/api/ no lleva __init__.py para que el paquete api/ de la Parte 1 no
   quede sombreado en la misma sesión de pytest.
 
+14.9 Despliegue del agente en Cloud Run (demostración)
+- Objetivo: poder mostrar el sistema agéntico funcionando en la nube y consumiendo el endpoint
+  de producción del modelo, no solo en local.
+- Recursos creados en GCP (proyecto propension-opciones-pago):
+  cuenta de servicio agente-cobranza-sa con roles aiplatform.user (Vertex),
+  secretmanager.secretAccessor, storage.objectViewer (paquete del modelo en el bucket),
+  logging.logWriter y run.invoker sobre propension-api-prod; secreto agente-api-key.
+- deploy/Dockerfile.agente (python 3.12-slim, usuario no root, sin models/ en la imagen: el
+  paquete se lee del bucket), deploy/service_agente.yaml (ingress all + IAM, 1 instancia
+  mínima y máxima para conservar el estado SQLite de la demo, concurrencia 20, timeout 300 s,
+  CPU siempre asignada, claves desde Secret Manager, SANDBOX_MODO parametrizado) y
+  deploy/cloudbuild_agente.yaml (build, push, render, replace), con el mismo esquema de
+  marcadores que la Parte 1.
+- La base del sandbox viaja en la imagen como agente/sandbox/sandbox_base.db (copia limpia:
+  sin OTP, mensajes, trazas ni registros del agente) y se copia a /data al arrancar;
+  /sandbox/reiniciar la restaura desde ahí cuando no hay datos crudos (en la nube).
+- Servicio desplegado: https://agente-cobranza-demo-amdvve4e3q-uc.a.run.app
+  Requiere token de identidad IAM (run.invoker) y la cabecera X-API-Key. Verificado: sin token
+  403, con token y sin clave 401, con ambos 200.
+- Prueba de humo en la nube (conversación completa): saludo -> cédula -> OTP leído por
+  /sandbox/otp -> propuesta de acuerdo con saldo y mora reales -> "acepto, el viernes" ->
+  acuerdo registrado para 2024-01-19. Latencia por turno 3,0 a 4,4 s. Gestión proactiva:
+  OFRECER_OPCION con plantilla enviada.
+- Dos fallas encontradas y corregidas en el despliegue:
+  1. MODELO_RUTA quedó como gs://-modelos/modelos/v4: Cloud Build no expande ${PROJECT_ID}
+     dentro del valor por defecto de una sustitución. Se arma ahora en el paso de render
+     (mismo arreglo aplicado a deploy/cloudbuild.yaml, que solo afectaba la ejecución manual
+     porque GitHub Actions pasa la ruta completa).
+  2. La API del modelo en producción devolvía 404 en /explain: la explicabilidad SHAP está en
+     dev y aún no se ha promovido a main. predecir_propension ahora cae a /predict cuando
+     /explain no existe, así el agente funciona contra cualquier versión desplegada de la API;
+     queda sin los factores SHAP hasta que se promueva el código a producción.
+- Tras las correcciones, las decisiones del agente en la nube usan fuente "api" (modelo de
+  producción): probabilidades 0,95 y 0,92 en los casos probados. Antes usaban el respaldo
+  score_banco, que es justamente el comportamiento previsto ante indisponibilidad.
+- Front: se ejecuta en local y apunta al servicio que se indique con AGENTE_API_URL; cuando la
+  URL es de Cloud Run añade el token de identidad obtenido con gcloud. Probado contra el
+  servicio de la nube.
+- Costo de la demostración: la instancia mínima 1 mantiene el contenedor encendido. Para
+  apagarlo sin borrar nada: gcloud run services update agente-cobranza-demo --region
+  us-central1 --min-instances 0 (el estado del sandbox se pierde al reciclar la instancia, es
+  el compromiso aceptado para la demo; en producción va a Cloud SQL o Firestore).
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 13:10)
 ======================================================================
@@ -1417,8 +1460,10 @@ Parte 1 (modelo + MLOps), lo que falta:
 Mejora del modelo (aparcada por decisión del usuario): variables de ruta y umbral por
 segmento no aportaron; la vía pendiente es tratar la ambigüedad de la clase e ("sin
 oferta"), que es el techo del F1.
-Parte 2 (sistema agéntico, 50 % de la nota): prototipo, pruebas y propuesta de operación HECHOS
-(etapa 14). Pendiente: documento técnico, arquitectura de las dos partes y presentación.
+Parte 2 (sistema agéntico, 50 % de la nota): prototipo, pruebas, propuesta de operación y
+despliegue de demostración en Cloud Run HECHOS (etapa 14). Pendiente: documento técnico,
+arquitectura de las dos partes, presentación y promover dev -> stage -> main para que la API
+del modelo en producción exponga /explain (hoy el agente cae a /predict, sin factores SHAP).
 
 ======================================================================
 DECLARACIÓN DE USO DE IA GENERATIVA (en construcción)

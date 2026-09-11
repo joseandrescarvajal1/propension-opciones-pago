@@ -42,8 +42,23 @@ from sandbox.db import filas  # noqa: E402
 from sandbox.whatsapp import bandeja  # noqa: E402
 
 
+def _restaurar_sandbox_base() -> bool:
+    """Si no existe la base del sandbox, la copia desde sandbox_base.db (incluida en la imagen). Devuelve True si copió."""
+    import shutil
+
+    from sandbox.db import ruta_db
+    destino = ruta_db()
+    base = ROOT / "agente" / "sandbox" / "sandbox_base.db"
+    if destino.exists() or not base.exists():
+        return False
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(base, destino)
+    return True
+
+
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
+    _restaurar_sandbox_base()
     app.state.conv = Conversador()
     yield
 
@@ -179,6 +194,15 @@ def reiniciar() -> dict:
     ck = Path(os.environ.get("AGENTE_CHECKPOINTS") or ROOT / "agente" / "sandbox" / "checkpoints.db")
     if ck.exists():
         ck.unlink()
-    out = subprocess.run([sys.executable, str(ROOT / "agente" / "sandbox" / "crear_sandbox.py")], capture_output=True, text=True, cwd=str(ROOT))
+    from sandbox.db import ruta_db
+    if (ROOT / "data" / "processed" / "test_fe.parquet").exists():
+        out = subprocess.run([sys.executable, str(ROOT / "agente" / "sandbox" / "crear_sandbox.py")], capture_output=True, text=True, cwd=str(ROOT))
+        ok, detalle = out.returncode == 0, (out.stdout or out.stderr)[-500:]
+    else:  # en la nube no hay datos crudos: se restaura la copia base incluida en la imagen
+        for sufijo in ("", "-wal", "-shm"):
+            p = Path(str(ruta_db()) + sufijo)
+            if p.exists():
+                p.unlink()
+        ok, detalle = _restaurar_sandbox_base(), "sandbox restaurado desde la copia base"
     app.state.conv = Conversador()
-    return {"reiniciado": out.returncode == 0, "detalle": (out.stdout or out.stderr)[-500:]}
+    return {"reiniciado": ok, "detalle": detalle}

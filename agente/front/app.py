@@ -28,9 +28,29 @@ CAB = {"X-API-Key": os.environ.get("AGENTE_API_KEY", "")}
 st.set_page_config(page_title="Sandbox agente de cobranza", page_icon="💬", layout="wide")
 
 
+@st.cache_data(ttl=3000)
+def _token_identidad() -> str | None:
+    """Cloud Run exige un token de identidad IAM además de la clave; en local se obtiene con gcloud."""
+    if ".run.app" not in API:
+        return None
+    import subprocess
+    for cmd in (os.environ.get("GCLOUD", "gcloud"), r"C:\Users\USUARIO\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"):
+        try:
+            tok = subprocess.run([cmd, "auth", "print-identity-token"], capture_output=True, text=True, timeout=60).stdout.strip()
+            if tok:
+                return tok
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
 def api(metodo: str, ruta: str, **kw):
     try:
-        r = httpx.request(metodo, f"{API}{ruta}", headers=CAB, timeout=180.0, **kw)
+        cab = dict(CAB)
+        tok = _token_identidad()
+        if tok:
+            cab["Authorization"] = f"Bearer {tok}"
+        r = httpx.request(metodo, f"{API}{ruta}", headers=cab, timeout=180.0, **kw)
         if r.status_code >= 400:
             st.error(f"{metodo} {ruta}: {r.status_code} {r.text[:300]}")
             return None
@@ -57,6 +77,7 @@ def burbuja(m: dict):
 
 
 st.title("Sandbox · Agente de cobranza (Parte 2)")
+st.caption(f"API del agente: {API}")
 df = clientes()
 if df.empty:
     st.stop()
