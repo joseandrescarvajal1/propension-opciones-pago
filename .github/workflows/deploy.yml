@@ -67,6 +67,11 @@ jobs:
       - name: Tráfico gradual en producción (10 % a la revisión nueva)
         if: steps.env.outputs.entorno == 'prod'
         run: |
-          gcloud run services update-traffic propension-api-prod --region ${{ vars.GCP_REGION }} --to-latest=false
-          gcloud run services update-traffic propension-api-prod --region ${{ vars.GCP_REGION }} --to-revisions LATEST=10
-          echo "Revisión nueva con 10 % del tráfico. Para pasar al 100 %: gcloud run services update-traffic propension-api-prod --to-latest"
+          SERVICIO=propension-api-prod
+          PREV=$(gcloud run revisions list --service $SERVICIO --region ${{ vars.GCP_REGION }} --sort-by=~metadata.creationTimestamp --format 'value(name)' | sed -n 2p)
+          if [ -z "$PREV" ]; then
+            echo "Primera revisión de producción: recibe el 100 % del tráfico."
+          else
+            gcloud run services update-traffic $SERVICIO --region ${{ vars.GCP_REGION }} --to-revisions LATEST=10,$PREV=90
+            echo "Revisión nueva con 10 % del tráfico y $PREV con 90 %. Para pasar al 100 %: gcloud run services update-traffic $SERVICIO --region ${{ vars.GCP_REGION }} --to-latest"
+          fi

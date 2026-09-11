@@ -1043,6 +1043,22 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   propension-opciones-pago/pull/1). Al fusionarlo se despliega propension-api-stage con
   prueba de humo. El PR stage -> main se abre después, porque hasta entonces ambas ramas
   son idénticas.
+12.7 Promoción a stage (2026-09-11, 15:36 UTC)
+- PR #1 dev -> stage fusionado por el usuario. El flujo deploy corrió en stage: pruebas OK,
+  WIF OK, Cloud Build OK; el servicio propension-api-stage quedó desplegado y responde
+  (https://propension-api-stage-amdvve4e3q-uc.a.run.app, revisión 00001, min 1 instancia).
+- Falló solo el paso "prueba de humo": con credenciales de Workload Identity Federation,
+  `gcloud auth print-identity-token` no emite un token de identidad directo. Corrección:
+  impersonar la cuenta de despliegue con la URL del servicio como audiencia
+  (--impersonate-service-account, --audiences, --include-email), lo que requiere
+  roles/iam.serviceAccountTokenCreator de github-deployer sobre sí misma (otorgado).
+- PR #2 dev -> stage fusionado por el usuario (15:45 UTC). Run deploy en stage
+  (bf923b9): pruebas, WIF, Cloud Build y PRUEBA DE HUMO en éxito. stage validado por
+  completo.
+- PR #3 stage -> main abierto. Al fusionarlo, el trabajo "desplegar" queda en espera de
+  aprobación del usuario en el environment prod (botón "Review deployments" en la página
+  del run) y luego despliega propension-api-prod con el 10 % del tráfico en la revisión
+  nueva; pasar al 100 %: gcloud run services update-traffic propension-api-prod --to-latest.
 - Pendiente: src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
   demostración de monitoreo diciembre vs enero registrada en MLflow, configuración de
   GCP (proyecto, bucket, Secret Manager, WIF) y documento de arquitectura.
