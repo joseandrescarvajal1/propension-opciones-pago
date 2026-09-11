@@ -1,0 +1,35 @@
+# Job de Cloud Run para el monitoreo mensual (misma imagen de la API; ejecuta src/monitoreo_mensual.py).
+# Programación: Cloud Scheduler lo lanza el día 2 de cada mes a las 06:00 (hora de Bogotá).
+#
+#   gcloud run jobs replace deploy/job_monitoreo.yaml --region us-central1
+#   gcloud scheduler jobs create http monitoreo-mensual --location us-central1 --schedule "0 6 2 * *" --time-zone "America/Bogota" \
+#       --uri "https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/__PROJECT_ID__/jobs/propension-monitoreo:run" \
+#       --http-method POST --oauth-service-account-email propension-api-sa@__PROJECT_ID__.iam.gserviceaccount.com
+#
+# Entradas (en el bucket): referencia = train_fe.parquet del entrenamiento vigente; actual = variables del mes calificado.
+# Salidas: outputs/monitoreo_<mes>.csv y .png en el bucket, run en MLflow (o tabla en BigQuery en la versión productiva).
+# Alerta: si n_alarma > 0 o psi_probabilidad > 0.25 el job termina con código distinto de 0 y Cloud Monitoring notifica.
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: propension-monitoreo
+  labels:
+    app: propension-opciones-pago
+spec:
+  template:
+    spec:
+      taskCount: 1
+      template:
+        spec:
+          serviceAccountName: propension-api-sa@__PROJECT_ID__.iam.gserviceaccount.com
+          timeoutSeconds: 1800
+          containers:
+            - image: __IMAGE__
+              command: ["python", "src/monitoreo_mensual.py"]
+              args: ["--mes", "__MES__", "--modelo", "gs://__PROJECT_ID__-modelos/modelos/v4",
+                     "--referencia", "gs://__PROJECT_ID__-modelos/datos/train_fe.parquet",
+                     "--actual", "gs://__PROJECT_ID__-modelos/datos/variables___MES__.parquet"]
+              resources:
+                limits:
+                  cpu: "2"
+                  memory: 4Gi

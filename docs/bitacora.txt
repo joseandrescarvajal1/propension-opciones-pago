@@ -1059,7 +1059,63 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   aprobación del usuario en el environment prod (botón "Review deployments" en la página
   del run) y luego despliega propension-api-prod con el 10 % del tráfico en la revisión
   nueva; pasar al 100 %: gcloud run services update-traffic propension-api-prod --to-latest.
-- Pendiente: src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
+12.8 Producción (2026-09-11, 16:05 UTC)
+- PR #3 stage -> main fusionado; el run de deploy quedó en "waiting" hasta la aprobación
+  del usuario en el environment prod (funcionó la compuerta manual). Tras aprobar: pruebas,
+  WIF y Cloud Build en éxito; servicio propension-api-prod desplegado
+  (https://propension-api-prod-amdvve4e3q-uc.a.run.app, revisión 00001, 100 % del
+  tráfico, min 1 instancia). Verificado: 403 sin token, /health ok, /predict con las
+  mismas probabilidades que dev, stage y local.
+- Falló el último paso del pipeline (tráfico gradual): `--to-latest=false` no es una
+  opción válida de gcloud. Corrección: si existe una revisión anterior, LATEST=10 y
+  anterior=90; si es la primera revisión, 100 %. PR #4 dev -> stage abierto; luego
+  stage -> main y aprobación para un segundo despliegue que ejercite el reparto 10/90.
+- Los tres ambientes existen y responden: dev, stage y prod, cada uno con su servicio de
+  Cloud Run, la misma imagen por commit y el modelo v4 desde el bucket.
+12.9 Entrenamiento reproducible y monitoreo (2026-09-11, tarde)
+- src/features.py: las funciones de los notebooks 01 y 06 (esqueleto, prob_, pag_, obl_,
+  pagcli_, cli_, lag_, lagcli_, fe_) en un módulo, con construir_dataset(data_dir) que
+  produce train y test con las 156 columnas. VERIFICADO: reconstruye train_fe.parquet y
+  test_fe.parquet exactamente (0 columnas con diferencias en 568,251 + 112,549 filas).
+- configs/variables_modelo.json: lista versionada de las 100 variables del modelo (77 del
+  EDA + 23 de ingeniería), para no depender de archivos en data/.
+- src/entrenar.py: un solo comando (`python src/entrenar.py --version vN [--reconstruir]`)
+  que construye o carga el dataset, valida temporalmente (train <= nov, umbral y métricas
+  en diciembre), reentrena con los 5 meses, empaqueta models/vN/ (modelo.txt +
+  modelo_info.json con umbral, variables, niveles de categóricas, métricas,
+  hiperparámetros y procedencia), escribe outputs/resultado_prueba.csv y
+  submission_vN.csv, y registra el run en MLflow (grupo entrenar_vN).
+- tests/test_features.py: 9 pruebas de las funciones de ventana, incluida la de NO FUGA
+  TEMPORAL (la ventana para el mes t cubre exactamente t-k..t-1 y nunca un mes >= t),
+  último valor previo, pendiente, rachas y meses desde un evento. Total de la batería:
+  40 pruebas.
+- src/monitoreo_mensual.py + deploy/job_monitoreo.yaml: script mensual de PSI por
+  variable, deriva de la predicción y desempeño real (si hay etiqueta), con figura, CSV y
+  run en MLflow (grupo monitoreo_<mes>); job de Cloud Run con Cloud Scheduler el día 2 de
+  cada mes, alerta si hay alarmas.
+- DEMOSTRACIÓN entrenamiento (2023-08..12) vs enero 2024, modelo v4, 100 variables:
+  14 en alarma, 15 en aviso, 71 estables. Mayor deriva: las tres tasas históricas por
+  grupo (PSI 6 a 7: en agosto son nulas por construcción y en enero usan cinco meses),
+  pag_n_pago_mas_3m (3.4), pag_meses_historial (1.3, crece con el calendario),
+  pag_marca_pago_t1 (1.2: la marca de pago de diciembre difiere de los meses previos,
+  posible estacionalidad de fin de año), pag_n_pago_mas_6m (1.1),
+  fe_meses_desde_rediferido (0.84), pag_n_pago_flag_12m (0.49), cli_t_corte (0.42).
+  Deriva de la PREDICCIÓN: PSI 0.023 (estable); % de unos 0.673 -> 0.644; probabilidad
+  media 0.480 -> 0.453. Lectura: varias variables cambian de distribución entre el
+  entrenamiento y enero (parte por construcción, parte estacional), pero la salida del
+  modelo se mantiene estable, coherente con el F1 de 0.714 en Kaggle. Las variables que
+  funcionan como reloj (tasas históricas, meses de historial) son candidatas a acotarse o
+  recalcularse con ventana fija antes de un despliegue prolongado.
+- Corrida de src/entrenar.py --version v5 (156 s con los parquet): diciembre F1 0.6972,
+  AUC 0.7659, precisión 0.5963, recall 0.8393, umbral 0.33, 1,093 árboles; idéntico al
+  modelo v4 del notebook 07 -> el script reproduce el notebook. Paquete models/v5 y
+  outputs/resultado_prueba.csv (64.4 % de unos); run en MLflow (grupo entrenar_v5).
+- tests/test_features_dataset.py: prueba de extremo a extremo con tablas sintéticas
+  (40 obligaciones, 12 meses): esquema de 156 columnas, no fuga en los rezagos (el rezago
+  del target en t es el target de t-1 y en agosto no hay rezagos), historial de pagos de
+  enero = 12 meses, tasa histórica por producto = tasa de train. Batería total: 44
+  pruebas, cobertura 93 % (features 92 %, API 99 %, inferencia 88 %, monitoreo 98 %).
+- Pendiente: con las funciones de los notebooks (prueba de no fuga temporal),
   demostración de monitoreo diciembre vs enero registrada en MLflow, configuración de
   GCP (proyecto, bucket, Secret Manager, WIF) y documento de arquitectura.
 
