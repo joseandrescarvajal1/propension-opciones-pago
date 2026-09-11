@@ -58,7 +58,9 @@ jobs:
         if: steps.env.outputs.entorno != 'dev'
         run: |
           URL=$(gcloud run services describe propension-api-${{ steps.env.outputs.entorno }} --region ${{ vars.GCP_REGION }} --format 'value(status.url)')
-          TOKEN=$(gcloud auth print-identity-token)
+          # Con Workload Identity Federation el token de identidad se obtiene impersonando la cuenta de despliegue,
+          # con la URL del servicio como audiencia (requiere iam.serviceAccountTokenCreator sobre sí misma).
+          TOKEN=$(gcloud auth print-identity-token --impersonate-service-account="${{ vars.GCP_SA_EMAIL }}" --audiences="$URL" --include-email)
           curl -sf -H "Authorization: Bearer $TOKEN" "$URL/health"
           curl -sf -H "Authorization: Bearer $TOKEN" -H "X-API-Key: ${{ secrets.API_KEY_SMOKE }}" "$URL/version"
 
