@@ -28,5 +28,4 @@ agente/sandbox/sandbox.db
 agente/sandbox/*.db-wal
 agente/sandbox/*.db-shm
 agente/sandbox/checkpoints*.db
-agente/front/
 agente/pruebas/

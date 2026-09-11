@@ -11,7 +11,7 @@ Modelo que estima, con un mes de anticipación, la probabilidad de que una oblig
 | `api/` | API FastAPI: `/health`, `/version`, `/predict`, `/explain` (valores SHAP por obligación). |
 | `agente/` | Parte 2: `sandbox/` (base SQLite con 40 clientes simulados y WhatsApp/SMS simulados), `herramientas/` (OTP, elegibilidad, modelo, siguiente mejor acción), `grafo/` (LangGraph: guardrails, deep agent, escalamiento, proactivo), `prompts/`, `api/` (FastAPI del agente), `front/` (Streamlit), `pruebas/` (escenarios con LLM real). |
 | `tests/` | 121 pruebas con pytest: 49 de la Parte 1 (variables y no fuga temporal, inferencia, API, monitoreo) y 72 de la Parte 2 sin LLM (OTP, reglas, estrategia, guardrails, herramientas, grafo, API). |
-| `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual); `Dockerfile.agente` y `service_agente.yaml` (propuesta para el agente). |
+| `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual); `Dockerfile.agente`, `service_agente.yaml` y `cloudbuild_agente.yaml` (API del agente); `Dockerfile.front`, `service_front.yaml` y `cloudbuild_front.yaml` (front del sandbox). |
 | `.github/workflows/` | `ci.yml` (lint, pruebas, imagen) y `deploy.yml` (despliegue por rama). |
 | `docs/` | Bitácora del proyecto, texto de la competencia, diccionarios, plan de MLOps, plan del agente (`plan_agentes.md`) y propuesta de operación en producción del agente (`operacion_agente.md`). |
 
@@ -71,13 +71,22 @@ python agente/pruebas/escenarios.py                      # escenarios con el LLM
 
 Requiere el proyecto de GCP con Vertex AI habilitado y credenciales de aplicación (`gcloud auth application-default login`); no hay llaves de LLM. El agente llama a la API del modelo (`MODELO_API_URL`) y, si no responde, al paquete local `models/v4`. Variables en `.env.example`.
 
-El agente también está desplegado en Cloud Run para demostración (`agente-cobranza-demo`, una instancia, sandbox activo, modelo de producción). El front local puede apuntar allí:
+Todo el sistema agéntico está además desplegado en Cloud Run, así que la demostración no necesita nada local:
+
+| Servicio | URL | Acceso |
+|---|---|---|
+| Front del sandbox (Streamlit) | `front-cobranza-demo` | público, con contraseña (`front-password` en Secret Manager) |
+| API del agente | `agente-cobranza-demo` | token de identidad IAM (`run.invoker`) + `X-API-Key` |
+| API del modelo | `propension-api-prod` | token de identidad IAM + `X-API-Key` |
+
+El front obtiene el token de su cuenta de servicio (`front-cobranza-sa`) por el servidor de metadata; en local lo obtiene con `gcloud`. Para construir y desplegar:
 
 ```bash
-AGENTE_API_URL=https://agente-cobranza-demo-amdvve4e3q-uc.a.run.app streamlit run agente/front/app.py
+gcloud builds submit --config deploy/cloudbuild_agente.yaml --substitutions=_ENV=demo,_SHORT_SHA=$(git rev-parse --short HEAD)
+gcloud builds submit --config deploy/cloudbuild_front.yaml  --substitutions=_ENV=demo,_SHORT_SHA=$(git rev-parse --short HEAD)
 ```
 
-El servicio exige token de identidad IAM (`run.invoker`) además de la clave de API; el front lo obtiene con `gcloud`. Para construir y desplegar: `gcloud builds submit --config deploy/cloudbuild_agente.yaml --substitutions=_ENV=demo,_SHORT_SHA=$(git rev-parse --short HEAD)`.
+El front local puede apuntar a cualquiera de los dos entornos con `AGENTE_API_URL`.
 
 ## Flujo de ramas y despliegue
 
