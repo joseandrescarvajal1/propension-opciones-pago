@@ -1,0 +1,25 @@
+# Imagen de la API del agente (Parte 2). Se construye desde la raíz del repo:
+#   docker build -f deploy/Dockerfile.agente -t agente-cobranza .
+#   docker run -p 8001:8080 -e AGENTE_API_KEY=... -e GCP_PROJECT_ID=... -e MODELO_API_URL=... agente-cobranza
+# En Cloud Run la cuenta de servicio autentica contra Vertex AI y la API del modelo; no hay llaves de LLM.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PORT=8080 SANDBOX_MODO=0 MODELO_MODO=api
+
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 app
+
+WORKDIR /app
+COPY agente/requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt google-cloud-storage==2.19.0
+
+COPY agente/ /app/agente/
+COPY src/inferencia.py /app/src/inferencia.py
+# El paquete del modelo (reserva local) se lee del bucket con MODELO_RUTA=gs://...; la base del sandbox viaja en la imagen
+# como sandbox_base.db y se copia a /data al arrancar. En producción real se reemplazan por Cloud SQL / Firestore.
+RUN mkdir -p /data && chown -R app:app /app /data
+ENV SANDBOX_DB=/data/sandbox.db AGENTE_CHECKPOINTS=/data/checkpoints.db
+USER app
+
+EXPOSE 8080
+CMD ["sh", "-c", "uvicorn agente.api.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]

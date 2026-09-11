@@ -99,6 +99,30 @@ class Modelo:
         p = self.probabilidad(df)
         return pd.DataFrame({"prob_uno": p, "var_rpta_alt": (p >= u).astype(int)}, index=df.index)
 
+    # --------------------------------------------------------- explicabilidad
+    def contribuciones(self, df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        """Valores SHAP (TreeSHAP nativo de LightGBM) en escala logit: matriz (n, n_features) y valor base (n,).
+        La probabilidad es sigmoide(base + suma de contribuciones)."""
+        C = self.booster.predict(self.preparar(df), pred_contrib=True)
+        return C[:, :-1], C[:, -1]
+
+    def explicar(self, df: pd.DataFrame, k: int = 5) -> list[dict[str, Any]]:
+        """Para cada fila: probabilidad, valor base y las k variables con mayor contribución absoluta,
+        cada una con su valor, su contribución (logit) y el sentido (sube o baja la probabilidad)."""
+        C, base = self.contribuciones(df)
+        X = df[self.features]
+        p = 1 / (1 + np.exp(-(base + C.sum(axis=1))))
+        salida = []
+        for i in range(len(df)):
+            orden = np.argsort(-np.abs(C[i]))[:k]
+            factores = []
+            for j in orden:
+                v = X.iloc[i, j]
+                factores.append({"variable": self.features[j], "valor": None if (isinstance(v, float) and np.isnan(v)) or v is None else (v.item() if hasattr(v, "item") else v),
+                                 "contribucion": round(float(C[i, j]), 4), "sentido": "sube" if C[i, j] > 0 else "baja"})
+            salida.append({"prob_uno": round(float(p[i]), 6), "base": round(float(base[i]), 4), "factores": factores})
+        return salida
+
     @property
     def version(self) -> str:
         return str(self.info.get("version", "desconocida"))

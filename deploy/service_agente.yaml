@@ -1,0 +1,62 @@
+# Cloud Run para la API del agente (Parte 2). Mismo esquema de marcadores que service.yaml.
+# Despliegue de demostración: una sola instancia (el sandbox y los hilos viven en SQLite dentro de la
+# instancia), endpoints de sandbox activos y modelo de la Parte 1 en producción. Ver docs/operacion_agente.md.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: agente-cobranza-__ENV__
+  annotations:
+    run.googleapis.com/ingress: all   # accesible por internet SOLO con token de identidad IAM (run.invoker) + clave de API
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "__MIN_INSTANCES__"
+        autoscaling.knative.dev/maxScale: "1"                       # demo: una instancia para conservar el estado SQLite
+        run.googleapis.com/cpu-throttling: "false"                  # las llamadas al LLM son largas; CPU siempre asignada
+    spec:
+      containerConcurrency: 20                                      # cada conversación mantiene 2 a 4 llamadas al LLM en vuelo
+      timeoutSeconds: 300
+      serviceAccountName: agente-cobranza-sa@__PROJECT_ID__.iam.gserviceaccount.com   # roles: aiplatform.user, run.invoker (API del modelo), secretmanager.secretAccessor, cloudsql.client
+      containers:
+        - image: __IMAGE__
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          env:
+            - name: GCP_PROJECT_ID
+              value: __PROJECT_ID__
+            - name: LLM_REGION
+              value: global
+            - name: LLM_MODELO
+              value: gemini-2.5-flash
+            - name: LLM_MODELO_GUARDRAIL
+              value: gemini-2.5-flash-lite
+            - name: MODELO_API_URL
+              value: __MODELO_API_URL__                             # API de la Parte 1 del mismo ambiente
+            - name: MODELO_MODO
+              value: api
+            - name: SANDBOX_MODO
+              value: "__SANDBOX_MODO__"                             # 1 en la demo; 0 en producción real
+            - name: MODELO_RUTA
+              value: __MODELO_RUTA__                                # reserva local del modelo (bucket)
+            - name: AGENTE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agente-api-key
+                  key: latest
+            - name: MODELO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: propension-api-key
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12

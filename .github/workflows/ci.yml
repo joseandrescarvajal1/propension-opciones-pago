@@ -21,10 +21,11 @@ jobs:
       - name: Instalar dependencias
         run: |
           pip install -r api/requirements.txt
+          pip install -r agente/requirements.txt
           pip install pytest pytest-cov httpx ruff scikit-learn
 
       - name: Lint (ruff)
-        run: ruff check src api tests
+        run: ruff check src api agente tests
 
       - name: Paquete de modelo para las pruebas
         # El modelo real vive en Cloud Storage; para las pruebas se descarga la versión indicada

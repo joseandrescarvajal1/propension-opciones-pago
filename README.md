@@ -1,18 +1,19 @@
 # Propensión a opciones de pago
 
-Modelo que estima, con un mes de anticipación, la probabilidad de que una obligación en mora acepte una opción de pago, y su puesta en producción: API en FastAPI, contenedor, despliegue en Cloud Run y monitoreo. Desarrollado para la Prueba Analítica: Modelo Opciones de Pago (season 3).
+Modelo que estima, con un mes de anticipación, la probabilidad de que una obligación en mora acepte una opción de pago, y su puesta en producción: API en FastAPI, contenedor, despliegue en Cloud Run y monitoreo (Parte 1). Sobre ese modelo, un sistema agéntico de cobranza por WhatsApp (Parte 2): deep agent con guardrails en LangGraph, Gemini en Vertex AI, verificación por OTP, reglas de negocio en código y un sandbox con clientes simulados. Desarrollado para la Prueba Analítica: Modelo Opciones de Pago (season 3).
 
 ## Estructura
 
 | Carpeta | Contenido |
 |---|---|
-| `notebooks/` | Exploración (02), construcción del dataset (01), modelos (03 a 09). Cada notebook registra sus experimentos en MLflow. |
+| `notebooks/` | Exploración (02), construcción del dataset (01), modelos (03 a 09), explicabilidad SHAP (10). Cada notebook registra sus experimentos en MLflow. |
 | `src/` | `download_data.py` (descarga), `features.py` (variables con corte t-1), `entrenar.py` (entrenamiento reproducible), `inferencia.py` (predicción), `monitoreo.py` y `monitoreo_mensual.py` (PSI y desempeño), `tracking.py` (MLflow), `mlflow_ui.py`. |
-| `api/` | API FastAPI: `/health`, `/version`, `/predict`. |
-| `tests/` | 44 pruebas unitarias con pytest (variables y no fuga temporal, inferencia, API, monitoreo). |
-| `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual). |
+| `api/` | API FastAPI: `/health`, `/version`, `/predict`, `/explain` (valores SHAP por obligación). |
+| `agente/` | Parte 2: `sandbox/` (base SQLite con 40 clientes simulados y WhatsApp/SMS simulados), `herramientas/` (OTP, elegibilidad, modelo, siguiente mejor acción), `grafo/` (LangGraph: guardrails, deep agent, escalamiento, proactivo), `prompts/`, `api/` (FastAPI del agente), `front/` (Streamlit), `pruebas/` (escenarios con LLM real). |
+| `tests/` | 121 pruebas con pytest: 49 de la Parte 1 (variables y no fuga temporal, inferencia, API, monitoreo) y 72 de la Parte 2 sin LLM (OTP, reglas, estrategia, guardrails, herramientas, grafo, API). |
+| `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual); `Dockerfile.agente` y `service_agente.yaml` (propuesta para el agente). |
 | `.github/workflows/` | `ci.yml` (lint, pruebas, imagen) y `deploy.yml` (despliegue por rama). |
-| `docs/` | Bitácora del proyecto, texto de la competencia, diccionarios, plan de MLOps. |
+| `docs/` | Bitácora del proyecto, texto de la competencia, diccionarios, plan de MLOps, plan del agente (`plan_agentes.md`) y propuesta de operación en producción del agente (`operacion_agente.md`). |
 
 Los datos (`data/`), los modelos entrenados (`models/`), las salidas (`outputs/`) y la base de MLflow no se versionan.
 
@@ -46,7 +47,7 @@ API_KEY=mi-clave MODELO_RUTA=models/v4 uvicorn api.main:app --port 8080
 curl -H "X-API-Key: mi-clave" http://127.0.0.1:8080/version
 ```
 
-`POST /predict` recibe `{"obligaciones": [{"ID": "...", "variables": {...}}], "umbral": null}` y devuelve probabilidad y clase por obligación.
+`POST /predict` recibe `{"obligaciones": [{"ID": "...", "variables": {...}}], "umbral": null}` y devuelve probabilidad y clase por obligación. `POST /explain?k=5` recibe lo mismo y devuelve, además, las k variables que más empujan cada probabilidad (valores SHAP del modelo cargado, calculados por LightGBM sin librerías adicionales).
 
 ### Pruebas y contenedor
 
@@ -57,6 +58,26 @@ docker run -p 8080:8080 -e API_KEY=mi-clave -e MODELO_RUTA=/modelo -v $PWD/model
 ```
 
 En Git Bash de Windows, anteponer `MSYS_NO_PATHCONV=1` al `docker run` para que no convierta la ruta `/modelo`.
+
+### Sistema agéntico (Parte 2)
+
+```bash
+pip install -r agente/requirements.txt
+python agente/sandbox/crear_sandbox.py --base            # 40 clientes simulados; --base genera además la copia que viaja en la imagen
+uvicorn agente.api.main:app --port 8001                  # API del agente (X-API-Key = AGENTE_API_KEY)
+streamlit run agente/front/app.py                        # front del sandbox en http://localhost:8501
+python agente/pruebas/escenarios.py                      # escenarios con el LLM real; resultados en outputs/pruebas_agente*.csv y MLflow
+```
+
+Requiere el proyecto de GCP con Vertex AI habilitado y credenciales de aplicación (`gcloud auth application-default login`); no hay llaves de LLM. El agente llama a la API del modelo (`MODELO_API_URL`) y, si no responde, al paquete local `models/v4`. Variables en `.env.example`.
+
+El agente también está desplegado en Cloud Run para demostración (`agente-cobranza-demo`, una instancia, sandbox activo, modelo de producción). El front local puede apuntar allí:
+
+```bash
+AGENTE_API_URL=https://agente-cobranza-demo-amdvve4e3q-uc.a.run.app streamlit run agente/front/app.py
+```
+
+El servicio exige token de identidad IAM (`run.invoker`) además de la clave de API; el front lo obtiene con `gcloud`. Para construir y desplegar: `gcloud builds submit --config deploy/cloudbuild_agente.yaml --substitutions=_ENV=demo,_SHORT_SHA=$(git rev-parse --short HEAD)`.
 
 ## Flujo de ramas y despliegue
 

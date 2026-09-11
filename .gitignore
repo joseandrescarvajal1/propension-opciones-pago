@@ -31,3 +31,8 @@ Thumbs.db
 .coverage
 .pytest_cache/
 .ruff_cache/
+agente/sandbox/*.db
+agente/**/*.db
+agente/**/*.sqlite
+agente/**/*.db-shm
+agente/**/*.db-wal

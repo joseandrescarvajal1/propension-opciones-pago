@@ -120,6 +120,45 @@ def predict(peticion: PeticionPrediccion, modelo: Modelo = Depends(obtener_model
                                n=len(preds), ms=round((time.perf_counter() - t0) * 1000, 1), predicciones=preds)
 
 
+class Factor(BaseModel):
+    variable: str
+    valor: Any
+    contribucion: float
+    sentido: str
+
+
+class Explicacion(BaseModel):
+    ID: str
+    prob_uno: float
+    var_rpta_alt: int
+    base: float
+    factores: list[Factor]
+
+
+class RespuestaExplicacion(BaseModel):
+    version_modelo: str
+    umbral: float
+    n: int
+    k: int
+    explicaciones: list[Explicacion]
+
+
+@app.post("/explain", response_model=RespuestaExplicacion, dependencies=[Depends(verificar_api_key)])
+def explain(peticion: PeticionPrediccion, k: int = 5, modelo: Modelo = Depends(obtener_modelo)) -> RespuestaExplicacion:
+    """Probabilidad y las k variables que más la empujan (valores SHAP del modelo cargado, escala logit)."""
+    if len(peticion.obligaciones) > MAX_FILAS:
+        raise HTTPException(status_code=413, detail=f"máximo {MAX_FILAS} obligaciones por petición")
+    k = max(1, min(int(k), len(modelo.features)))
+    umbral = modelo.umbral if peticion.umbral is None else peticion.umbral
+    df = pd.DataFrame([o.variables for o in peticion.obligaciones])
+    try:
+        exp = modelo.explicar(df.reindex(columns=modelo.features) if set(modelo.features) <= set(df.columns) else df, k=k)
+    except EntradaInvalida as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return RespuestaExplicacion(version_modelo=modelo.version, umbral=umbral, n=len(exp), k=k,
+                                explicaciones=[Explicacion(ID=o.ID, prob_uno=e["prob_uno"], var_rpta_alt=int(e["prob_uno"] >= umbral), base=e["base"], factores=e["factores"]) for o, e in zip(peticion.obligaciones, exp)])
+
+
 @app.middleware("http")
 async def cabeceras_seguridad(request: Request, call_next):
     respuesta = await call_next(request)

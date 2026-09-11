@@ -1,0 +1,859 @@
+{
+  "hoy_sandbox": "2024-01-15",
+  "escenarios": {
+    "E1_mora_temprana_alta_prob": "Mora temprana (1 a 30 días) y alta probabilidad; se propone acuerdo de pago a 5 días.",
+    "E2_varias_opciones": "Elegible para 2 o 3 opciones de pago; el sistema elige y explica la más adecuada.",
+    "E3_no_elegible": "No elegible: opción aplicada recientemente (en espera), sin opciones preaprobadas o con restricción; sin ofertas no autorizadas.",
+    "E4_rechazo_incumplimiento": "Cliente con acuerdo previo incumplido o que rechaza y pide otra alternativa.",
+    "E5_reactivo_consulta": "Cliente que contacta para consultar su deuda, negociar o manifestar dificultades.",
+    "E6_info_incompleta": "Información incompleta o contradictoria en los sistemas; servicio del modelo indisponible.",
+    "E7_sensible_humano": "Solicitudes sensibles, intentos de manipulación o transferencia a gestor humano."
+  },
+  "catalogo_opciones": {
+    "AMP": {
+      "nombre": "Ampliación de plazo",
+      "descripcion": "Se extiende el plazo de la deuda para reducir la cuota mensual.",
+      "meses_espera": 3,
+      "factor_cuota": 0.7,
+      "plazo": 48
+    },
+    "RED": {
+      "nombre": "Reducción de cuota",
+      "descripcion": "Se reduce temporalmente la cuota durante 6 meses y luego se recalcula.",
+      "meses_espera": 3,
+      "factor_cuota": 0.6,
+      "plazo": 36
+    },
+    "TASA": {
+      "nombre": "Renegociación de tasa",
+      "descripcion": "Se baja la tasa de interés y con ella la cuota, manteniendo el plazo.",
+      "meses_espera": 3,
+      "factor_cuota": 0.85,
+      "plazo": null
+    },
+    "REEST": {
+      "nombre": "Reestructuración de crédito",
+      "descripcion": "Se unifica el saldo vencido con el capital y se define un nuevo plan de pagos.",
+      "meses_espera": 4,
+      "factor_cuota": 0.55,
+      "plazo": 60
+    },
+    "PRORR": {
+      "nombre": "Prórroga",
+      "descripcion": "Periodo de gracia de 2 meses sin cuota; los intereses se difieren al final.",
+      "meses_espera": 4,
+      "factor_cuota": 0.0,
+      "plazo": null
+    },
+    "CONSOL": {
+      "nombre": "Consolidación de pasivos",
+      "descripcion": "Se unen varias obligaciones en un solo crédito con una única cuota menor.",
+      "meses_espera": 4,
+      "factor_cuota": 0.65,
+      "plazo": 60
+    }
+  },
+  "clientes": [
+    {
+      "cedula": "1087512887",
+      "nombre": "Ana María Gómez",
+      "telefono": "+57 313551745",
+      "escenario": "E1_mora_temprana_alta_prob",
+      "subcaso": null,
+      "id_obligacion": "410806#982524#97818",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 25,
+      "saldo_capital": 17120000.0,
+      "valor_cuota": 757000.0,
+      "prob_v4": 0.9683,
+      "opciones_preaprobadas": [],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1031885861",
+      "nombre": "Carlos Rodríguez",
+      "telefono": "+57 304805535",
+      "escenario": "E1_mora_temprana_alta_prob",
+      "subcaso": null,
+      "id_obligacion": "424083#452448#627905",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 14,
+      "saldo_capital": 3642000.0,
+      "valor_cuota": 283000.0,
+      "prob_v4": 0.9507,
+      "opciones_preaprobadas": [],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1060042039",
+      "nombre": "Luisa Martínez",
+      "telefono": "+57 318391962",
+      "escenario": "E1_mora_temprana_alta_prob",
+      "subcaso": null,
+      "id_obligacion": "460669#553922#526420",
+      "producto": "ROTATIVOS",
+      "dias_mora": 18,
+      "saldo_capital": 2476000.0,
+      "valor_cuota": 87000.0,
+      "prob_v4": 0.9214,
+      "opciones_preaprobadas": [
+        "AMP"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1044341014",
+      "nombre": "Jorge López",
+      "telefono": "+57 329632989",
+      "escenario": "E1_mora_temprana_alta_prob",
+      "subcaso": null,
+      "id_obligacion": "197605#439656#640646",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 14,
+      "saldo_capital": 4897000.0,
+      "valor_cuota": 497000.0,
+      "prob_v4": 0.9168,
+      "opciones_preaprobadas": [],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1063684822",
+      "nombre": "Camila García",
+      "telefono": "+57 325588948",
+      "escenario": "E1_mora_temprana_alta_prob",
+      "subcaso": null,
+      "id_obligacion": "233173#803438#276904",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 23,
+      "saldo_capital": 13250000.0,
+      "valor_cuota": 533000.0,
+      "prob_v4": 0.7352,
+      "opciones_preaprobadas": [
+        "TASA"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1029659722",
+      "nombre": "Andrés Hernández",
+      "telefono": "+57 302267432",
+      "escenario": "E1_mora_temprana_alta_prob",
+      "subcaso": null,
+      "id_obligacion": "139449#239409#843605",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 14,
+      "saldo_capital": 1393000.0,
+      "valor_cuota": 144000.0,
+      "prob_v4": 0.6379,
+      "opciones_preaprobadas": [],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1033582080",
+      "nombre": "Valentina Pérez",
+      "telefono": "+57 318142934",
+      "escenario": "E2_varias_opciones",
+      "subcaso": null,
+      "id_obligacion": "536879#395657#684251",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 59,
+      "saldo_capital": 7387000.0,
+      "valor_cuota": 1423000.0,
+      "prob_v4": 0.924,
+      "opciones_preaprobadas": [
+        "TASA",
+        "PRORR",
+        "REEST"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1075766960",
+      "nombre": "Santiago Sánchez",
+      "telefono": "+57 305498108",
+      "escenario": "E2_varias_opciones",
+      "subcaso": null,
+      "id_obligacion": "244256#924413#155929",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 66,
+      "saldo_capital": 900000.0,
+      "valor_cuota": 264000.0,
+      "prob_v4": 0.9781,
+      "opciones_preaprobadas": [
+        "TASA",
+        "AMP"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1019888140",
+      "nombre": "Mariana Ramírez",
+      "telefono": "+57 319859655",
+      "escenario": "E2_varias_opciones",
+      "subcaso": null,
+      "id_obligacion": "527030#1015100#65242",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 69,
+      "saldo_capital": 4645000.0,
+      "valor_cuota": 284000.0,
+      "prob_v4": 0.7597,
+      "opciones_preaprobadas": [
+        "AMP",
+        "RED"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1016521357",
+      "nombre": "Juan Pablo Torres",
+      "telefono": "+57 323075223",
+      "escenario": "E2_varias_opciones",
+      "subcaso": null,
+      "id_obligacion": "224636#1063321#17021",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 59,
+      "saldo_capital": 13231000.0,
+      "valor_cuota": 659000.0,
+      "prob_v4": 0.9268,
+      "opciones_preaprobadas": [
+        "AMP",
+        "CONSOL"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1032467395",
+      "nombre": "Daniela Flórez",
+      "telefono": "+57 304338922",
+      "escenario": "E2_varias_opciones",
+      "subcaso": null,
+      "id_obligacion": "313026#822915#257427",
+      "producto": "CARTERA ORDINARIA",
+      "dias_mora": 64,
+      "saldo_capital": 4164000.0,
+      "valor_cuota": 4367000.0,
+      "prob_v4": 0.7213,
+      "opciones_preaprobadas": [
+        "TASA",
+        "CONSOL",
+        "PRORR"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1032564854",
+      "nombre": "Felipe Díaz",
+      "telefono": "+57 316747956",
+      "escenario": "E2_varias_opciones",
+      "subcaso": null,
+      "id_obligacion": "146923#604621#475721",
+      "producto": "HIPOTECARIO VIVIENDA",
+      "dias_mora": 41,
+      "saldo_capital": 3960000.0,
+      "valor_cuota": 210000.0,
+      "prob_v4": 0.8101,
+      "opciones_preaprobadas": [
+        "PRORR",
+        "CONSOL"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1031890247",
+      "nombre": "Laura Vargas",
+      "telefono": "+57 309642927",
+      "escenario": "E3_no_elegible",
+      "subcaso": "opcion_reciente",
+      "id_obligacion": "183600#557887#522455",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 56,
+      "saldo_capital": 11758000.0,
+      "valor_cuota": 895000.0,
+      "prob_v4": 0.4026,
+      "opciones_preaprobadas": [
+        "AMP",
+        "RED"
+      ],
+      "opciones_aplicadas": [
+        "REEST"
+      ],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1064199511",
+      "nombre": "Mateo Castro",
+      "telefono": "+57 329627065",
+      "escenario": "E3_no_elegible",
+      "subcaso": "sin_preaprobadas",
+      "id_obligacion": "61058#653340#427002",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 95,
+      "saldo_capital": 3934000.0,
+      "valor_cuota": 193000.0,
+      "prob_v4": 0.3472,
+      "opciones_preaprobadas": [],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1045239263",
+      "nombre": "Sofía Moreno",
+      "telefono": "+57 305099379",
+      "escenario": "E3_no_elegible",
+      "subcaso": "restriccion",
+      "id_obligacion": "601497#781315#299027",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 59,
+      "saldo_capital": 26562000.0,
+      "valor_cuota": 1334000.0,
+      "prob_v4": 0.9095,
+      "opciones_preaprobadas": [
+        "AMP",
+        "TASA"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": [
+        "juridica"
+      ]
+    },
+    {
+      "cedula": "1091950203",
+      "nombre": "Diego Ortiz",
+      "telefono": "+57 308071758",
+      "escenario": "E3_no_elegible",
+      "subcaso": "opcion_reciente",
+      "id_obligacion": "69838#238783#844221",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 28,
+      "saldo_capital": 2987000.0,
+      "valor_cuota": 635000.0,
+      "prob_v4": 0.6113,
+      "opciones_preaprobadas": [
+        "RED",
+        "AMP"
+      ],
+      "opciones_aplicadas": [
+        "REEST"
+      ],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1040143146",
+      "nombre": "Paula Jiménez",
+      "telefono": "+57 326344826",
+      "escenario": "E3_no_elegible",
+      "subcaso": "sin_preaprobadas",
+      "id_obligacion": "116022#118015#957460",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 95,
+      "saldo_capital": 5292000.0,
+      "valor_cuota": 645000.0,
+      "prob_v4": 0.6399,
+      "opciones_preaprobadas": [],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1082942807",
+      "nombre": "Nicolás Ruiz",
+      "telefono": "+57 313072722",
+      "escenario": "E3_no_elegible",
+      "subcaso": "restriccion",
+      "id_obligacion": "51247#796346#283996",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 37,
+      "saldo_capital": 29980000.0,
+      "valor_cuota": 1764000.0,
+      "prob_v4": 0.5808,
+      "opciones_preaprobadas": [
+        "AMP",
+        "TASA"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": [
+        "juridica"
+      ]
+    },
+    {
+      "cedula": "1046823639",
+      "nombre": "Isabela Álvarez",
+      "telefono": "+57 316354253",
+      "escenario": "E4_rechazo_incumplimiento",
+      "subcaso": "acuerdo_incumplido",
+      "id_obligacion": "200585#532736#547606",
+      "producto": "ROTATIVOS",
+      "dias_mora": 79,
+      "saldo_capital": 2583000.0,
+      "valor_cuota": 274000.0,
+      "prob_v4": 0.4067,
+      "opciones_preaprobadas": [
+        "RED",
+        "REEST"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [
+        "incumplido"
+      ],
+      "restricciones": []
+    },
+    {
+      "cedula": "1063737618",
+      "nombre": "Sebastián Mendoza",
+      "telefono": "+57 329169634",
+      "escenario": "E4_rechazo_incumplimiento",
+      "subcaso": "acuerdo_incumplido",
+      "id_obligacion": "190566#1000773#79569",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 37,
+      "saldo_capital": 1686000.0,
+      "valor_cuota": 126000.0,
+      "prob_v4": 0.3846,
+      "opciones_preaprobadas": [
+        "REEST",
+        "RED"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [
+        "incumplido"
+      ],
+      "restricciones": []
+    },
+    {
+      "cedula": "1056511938",
+      "nombre": "Gabriela Rojas",
+      "telefono": "+57 315218504",
+      "escenario": "E4_rechazo_incumplimiento",
+      "subcaso": "acuerdo_incumplido",
+      "id_obligacion": "604654#683746#396596",
+      "producto": "LIBRANZA",
+      "dias_mora": 28,
+      "saldo_capital": 11682000.0,
+      "valor_cuota": 249000.0,
+      "prob_v4": 0.5357,
+      "opciones_preaprobadas": [
+        "RED",
+        "AMP"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [
+        "incumplido"
+      ],
+      "restricciones": []
+    },
+    {
+      "cedula": "1048241627",
+      "nombre": "Alejandro Cárdenas",
+      "telefono": "+57 319652603",
+      "escenario": "E4_rechazo_incumplimiento",
+      "subcaso": "acuerdo_incumplido",
+      "id_obligacion": "525833#1037326#43016",
+      "producto": "ROTATIVOS",
+      "dias_mora": 48,
+      "saldo_capital": 1000000.0,
+      "valor_cuota": 69000.0,
+      "prob_v4": 0.9453,
+      "opciones_preaprobadas": [
+        "AMP",
+        "REEST"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [
+        "incumplido"
+      ],
+      "restricciones": []
+    },
+    {
+      "cedula": "1092101223",
+      "nombre": "Natalia Guerrero",
+      "telefono": "+57 318925819",
+      "escenario": "E4_rechazo_incumplimiento",
+      "subcaso": "acuerdo_incumplido",
+      "id_obligacion": "109155#481633#598709",
+      "producto": "ROTATIVOS",
+      "dias_mora": 29,
+      "saldo_capital": 1749000.0,
+      "valor_cuota": 67000.0,
+      "prob_v4": 0.4325,
+      "opciones_preaprobadas": [
+        "AMP",
+        "RED"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [
+        "incumplido"
+      ],
+      "restricciones": []
+    },
+    {
+      "cedula": "1054992863",
+      "nombre": "David Medina",
+      "telefono": "+57 319592783",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "372553#608613#471729",
+      "producto": "ROTATIVOS",
+      "dias_mora": 16,
+      "saldo_capital": 1906000.0,
+      "valor_cuota": 74000.0,
+      "prob_v4": 0.4547,
+      "opciones_preaprobadas": [
+        "AMP"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1014721942",
+      "nombre": "Juliana Restrepo",
+      "telefono": "+57 321428080",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "131917#470225#610117",
+      "producto": "HIPOTECARIO VIVIENDA",
+      "dias_mora": 31,
+      "saldo_capital": 58174000.0,
+      "valor_cuota": 609000.0,
+      "prob_v4": 0.3157,
+      "opciones_preaprobadas": [
+        "PRORR"
+      ],
+      "opciones_aplicadas": [
+        "AMP"
+      ],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1060446332",
+      "nombre": "Miguel Ospina",
+      "telefono": "+57 319755568",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "535132#552325#528017",
+      "producto": "ROTATIVOS",
+      "dias_mora": 79,
+      "saldo_capital": 11247000.0,
+      "valor_cuota": 1190000.0,
+      "prob_v4": 0.2356,
+      "opciones_preaprobadas": [
+        "CONSOL"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1043291839",
+      "nombre": "Carolina Zapata",
+      "telefono": "+57 313586636",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "89430#143374#944731",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 28,
+      "saldo_capital": 3511000.0,
+      "valor_cuota": 282000.0,
+      "prob_v4": 0.2342,
+      "opciones_preaprobadas": [
+        "PRORR",
+        "REEST"
+      ],
+      "opciones_aplicadas": [
+        "AMP"
+      ],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1051742298",
+      "nombre": "Esteban Arango",
+      "telefono": "+57 327912022",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "612312#209026#873700",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 59,
+      "saldo_capital": 8569000.0,
+      "valor_cuota": 971000.0,
+      "prob_v4": 0.5271,
+      "opciones_preaprobadas": [
+        "CONSOL"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1092109360",
+      "nombre": "Manuela Betancur",
+      "telefono": "+57 312352788",
+      "escenario": "E6_info_incompleta",
+      "subcaso": "variables_faltantes",
+      "id_obligacion": "138718#349716#742100",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 30,
+      "saldo_capital": 18639000.0,
+      "valor_cuota": 518000.0,
+      "prob_v4": 0.353,
+      "opciones_preaprobadas": [
+        "AMP"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1080014627",
+      "nombre": "Ricardo Cano",
+      "telefono": "+57 323239845",
+      "escenario": "E6_info_incompleta",
+      "subcaso": "contradictoria",
+      "id_obligacion": "514956#127893#959959",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 0,
+      "saldo_capital": 22405000.0,
+      "valor_cuota": 622000.0,
+      "prob_v4": 0.4699,
+      "opciones_preaprobadas": [
+        "AMP",
+        "RED"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1015284180",
+      "nombre": "Adriana Giraldo",
+      "telefono": "",
+      "escenario": "E6_info_incompleta",
+      "subcaso": "sin_telefono",
+      "id_obligacion": "592421#139988#948117",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 57,
+      "saldo_capital": 12729000.0,
+      "valor_cuota": 354000.0,
+      "prob_v4": 0.5845,
+      "opciones_preaprobadas": [
+        "TASA"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1037740337",
+      "nombre": "Julián Montoya",
+      "telefono": "+57 318931766",
+      "escenario": "E6_info_incompleta",
+      "subcaso": "servicio_modelo_caido",
+      "id_obligacion": "324086#304497#815201",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 36,
+      "saldo_capital": 24444000.0,
+      "valor_cuota": 679000.0,
+      "prob_v4": 0.4418,
+      "opciones_preaprobadas": [
+        "AMP",
+        "REEST"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1016024804",
+      "nombre": "Catalina Quintero",
+      "telefono": "+57 302825942",
+      "escenario": "E7_sensible_humano",
+      "subcaso": "fallecido",
+      "id_obligacion": "359583#49299#1055533",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 27,
+      "saldo_capital": 1174000.0,
+      "valor_cuota": 236000.0,
+      "prob_v4": 0.4511,
+      "opciones_preaprobadas": [],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": [
+        "fallecido"
+      ]
+    },
+    {
+      "cedula": "1068186503",
+      "nombre": "Tomás Salazar",
+      "telefono": "+57 301340364",
+      "escenario": "E7_sensible_humano",
+      "subcaso": "fraude",
+      "id_obligacion": "150318#323200#759931",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 59,
+      "saldo_capital": 1101000.0,
+      "valor_cuota": 250000.0,
+      "prob_v4": 0.6755,
+      "opciones_preaprobadas": [
+        "AMP"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": [
+        "fraude"
+      ]
+    },
+    {
+      "cedula": "1041071006",
+      "nombre": "Lucía Valencia",
+      "telefono": "+57 309329166",
+      "escenario": "E7_sensible_humano",
+      "subcaso": "manipulacion",
+      "id_obligacion": "429633#1055170#25172",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 43,
+      "saldo_capital": 29734000.0,
+      "valor_cuota": 699000.0,
+      "prob_v4": 0.3888,
+      "opciones_preaprobadas": [
+        "AMP",
+        "TASA"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1034244187",
+      "nombre": "Samuel Vélez",
+      "telefono": "+57 324085491",
+      "escenario": "E7_sensible_humano",
+      "subcaso": "reclamacion",
+      "id_obligacion": "614212#605594#474748",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 47,
+      "saldo_capital": 23379000.0,
+      "valor_cuota": 1027000.0,
+      "prob_v4": 0.2599,
+      "opciones_preaprobadas": [
+        "RED"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": [
+        "reclamacion"
+      ]
+    },
+    {
+      "cedula": "1095115431",
+      "nombre": "Sara Agudelo",
+      "telefono": "+57 316817225",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "588459#330359#750346",
+      "producto": "TARJETA DE CREDITO",
+      "dias_mora": 14,
+      "saldo_capital": 22815000.0,
+      "valor_cuota": 2158000.0,
+      "prob_v4": 0.4846,
+      "opciones_preaprobadas": [
+        "TASA"
+      ],
+      "opciones_aplicadas": [
+        "AMP"
+      ],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1095293188",
+      "nombre": "Emilio Bedoya",
+      "telefono": "+57 325519282",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "597898#500127#580215",
+      "producto": "ROTATIVOS",
+      "dias_mora": 79,
+      "saldo_capital": 996000.0,
+      "valor_cuota": 105000.0,
+      "prob_v4": 0.1188,
+      "opciones_preaprobadas": [
+        "TASA",
+        "CONSOL"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1048678678",
+      "nombre": "Verónica Echeverri",
+      "telefono": "+57 317423812",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "311074#748334#332008",
+      "producto": "CARTERA ORDINARIA",
+      "dias_mora": 23,
+      "saldo_capital": 22669000.0,
+      "valor_cuota": 6877000.0,
+      "prob_v4": 0.7479,
+      "opciones_preaprobadas": [
+        "TASA"
+      ],
+      "opciones_aplicadas": [
+        "AMP"
+      ],
+      "acuerdos": [],
+      "restricciones": []
+    },
+    {
+      "cedula": "1084607322",
+      "nombre": "Óscar Londoño",
+      "telefono": "+57 314682068",
+      "escenario": "E5_reactivo_consulta",
+      "subcaso": null,
+      "id_obligacion": "475759#811027#269315",
+      "producto": "LIBRE INVERSION",
+      "dias_mora": 37,
+      "saldo_capital": 2641000.0,
+      "valor_cuota": 170000.0,
+      "prob_v4": 0.3708,
+      "opciones_preaprobadas": [
+        "PRORR",
+        "AMP"
+      ],
+      "opciones_aplicadas": [],
+      "acuerdos": [],
+      "restricciones": []
+    }
+  ]
+}
