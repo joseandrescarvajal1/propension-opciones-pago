@@ -13,7 +13,7 @@ Modelo que estima, con un mes de anticipación, la probabilidad de que una oblig
 | `tests/` | 121 pruebas con pytest: 49 de la Parte 1 (variables y no fuga temporal, inferencia, API, monitoreo) y 72 de la Parte 2 sin LLM (OTP, reglas, estrategia, guardrails, herramientas, grafo, API). |
 | `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual); `Dockerfile.agente`, `service_agente.yaml` y `cloudbuild_agente.yaml` (API del agente); `Dockerfile.front`, `service_front.yaml` y `cloudbuild_front.yaml` (front del sandbox). |
 | `.github/workflows/` | `ci.yml` (lint, pruebas, imagen) y `deploy.yml` (despliegue por rama). |
-| `docs/` | Bitácora del proyecto, texto de la competencia, diccionarios, plan de MLOps, plan del agente (`plan_agentes.md`) y propuesta de operación en producción del agente (`operacion_agente.md`). |
+| `docs/` | `arquitectura.md` (diseño y operación de las dos partes, con diagramas), `operacion_agente.md` (LLMOps), `plan_mlops.md`, `plan_agentes.md`, bitácora del proyecto, texto de la competencia y diccionarios. |
 
 Los datos (`data/`), los modelos entrenados (`models/`), las salidas (`outputs/`) y la base de MLflow no se versionan.
 

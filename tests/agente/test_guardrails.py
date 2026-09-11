@@ -53,3 +53,13 @@ def test_salida_reglas(respuesta, verificado, kw, cumple, clave):
 def test_salida_acuerdo_no_autorizado():
     r = g.revisar_salida("Te propongo un acuerdo de pago; podemos registrar el compromiso hoy.", True, [], usar_llm=False)
     assert not r["cumple"] and any("acuerdo" in v for v in r["violaciones"])
+
+
+def test_glosario_cubre_todas_las_variables_del_modelo():
+    """Ninguna variable del modelo debe llegar al cliente con su nombre técnico."""
+    import json
+    from pathlib import Path
+
+    from herramientas.glosario import falta_glosario
+    feats = json.loads((Path(__file__).resolve().parents[2] / "configs" / "variables_modelo.json").read_text(encoding="utf-8"))["modelo"]
+    assert falta_glosario(feats) == []
