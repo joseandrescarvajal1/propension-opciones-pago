@@ -1617,6 +1617,9 @@ ETAPA 15 · ENTREGABLES
 - Declaración de uso de IA generativa: Claude Code como asistente en todo el desarrollo, con la
   lista de decisiones tomadas por el candidato, y mención de que la solución construida usa
   Gemini 2.5 Flash en Vertex AI y valores SHAP.
+- Por decisión del candidato, el documento está redactado en primera persona ("uní las fuentes",
+  "pasé a validación temporal", "monté la suite"), para que se lea como su relato del trabajo y no
+  como una descripción externa. Versión final: 3.930 caracteres de 4.000.
 
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
