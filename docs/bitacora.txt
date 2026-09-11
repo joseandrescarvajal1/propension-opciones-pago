@@ -1570,7 +1570,8 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
 - Síntoma: al escribir la contraseña, el front respondía
   "TypeError: comparing strings with non-ASCII characters is not supported" en hmac.compare_digest.
 - Causa: el secreto front-password se creó canalizando una variable desde PowerShell, que escribió
-  una marca de orden de bytes (ï»¿) al inicio y un 
+  una marca de orden de bytes (ï»¿) al inicio y un 
+
  al final. Esa marca es un carácter
   no ASCII invisible, y hmac.compare_digest sobre cadenas solo admite ASCII. La contraseña que
   escribía el usuario era correcta; lo que estaba mal era el valor guardado.
@@ -1580,6 +1581,28 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
   espacios vuelven a romperla. Verificado con cinco casos, incluido el del secreto sucio.
 - Lección aplicable al resto del proyecto: los secretos se escriben desde un archivo generado con
   Python, nunca canalizando texto desde PowerShell.
+
+======================================================================
+ETAPA 15 · ENTREGABLES
+======================================================================
+15.1 Glosario completo de variables (cambio menor pendiente)
+- En la ficha del cliente aparecían nombres técnicos sin traducir (por ejemplo
+  "prob prob auto cura mean3", "prob lote t1") porque el glosario cubría 53 de las 100 variables
+  del modelo. Se completaron las 47 faltantes con su descripción de negocio.
+- Se añadió falta_glosario() y una prueba que falla si alguna variable del modelo queda sin
+  descripción, para que no vuelva a ocurrir al cambiar la lista de variables. 126 pruebas.
+
+15.2 Entregable 5: diseño de arquitectura y operación (docs/arquitectura.md)
+- Documento único para las dos partes, con cinco diagramas en mermaid (se ven directamente en
+  GitHub): vista general, ciclo de vida del modelo, grafo del sistema agéntico, árbol de la
+  siguiente mejor acción y vista de despliegue en Google Cloud.
+- Contenido: decisiones que definen la arquitectura y su motivo; responsabilidad de cada
+  componente del grafo; el principio de que el modelo de lenguaje nunca decide qué se puede
+  ofrecer; autenticación en cadena entre servicios; compuertas de despliegue por ambiente;
+  tabla de qué cambia al pasar de prototipo a producción; riesgos con su mitigación y estado; y
+  los datos adicionales que más mejorarían la solución, punto opcional del entregable 1.
+- Marca explícita de lo implementado frente a lo propuesto, para que el evaluador distinga.
+- Cubre también la exigencia del entregable 4 de incluir diagramas del framework de agentes.
 
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
@@ -1606,7 +1629,7 @@ producción y despliegue de demostración en Cloud Run consumiendo el modelo de 
 explicabilidad SHAP.
 Pendiente para la entrega (ambas partes):
 - Documento técnico (máximo 4,000 caracteres) con la declaración de uso de IA generativa.
-- Documento y diagrama de arquitectura de las dos partes.
+- Documento y diagrama de arquitectura de las dos partes: HECHO (docs/arquitectura.md).
 - Presentación ejecutiva de 15 minutos.
 - Opcional: enganchar el agente y el front al pipeline por rama (hoy se despliegan con
   gcloud builds submit --config deploy/cloudbuild_agente.yaml y cloudbuild_front.yaml) y apagar
