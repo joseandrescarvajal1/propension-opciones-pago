@@ -1017,6 +1017,20 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
 - github-deployer recibió además roles/run.invoker para la prueba de humo del pipeline.
 - Correcciones subidas a dev (commit "Despliegue en Cloud Run: correcciones...") para
   que el pipeline de GitHub repita el despliegue con Workload Identity Federation.
+12.5 CI/CD de punta a punta validado (2026-09-11, 15:20 UTC)
+- Ajuste de diseño: el flujo deploy.yml disparado por workflow_run no arrancaba porque
+  GitHub solo registra ese disparador cuando el archivo existe en la rama por defecto
+  (main). Se cambió a disparo por push a dev/stage/main con el CI (ci.yml) invocado como
+  trabajo previo mediante workflow_call; ci.yml sigue corriendo solo en pull requests.
+- Incidencia local: los push quedaron bloqueados por un diálogo del administrador de
+  credenciales de Git; se cerraron esos procesos y se hizo el push con la credencial
+  guardada (autorización básica con el token).
+- Run "deploy" del commit ef246e1 en dev: pruebas (lint, paquete, 31 pruebas, imagen)
+  OK; autenticación WIF OK; Cloud Build OK; humo y tráfico gradual omitidos (solo stage y
+  prod). Cloud Run: revisión propension-api-dev-00002 creada por GitHub con la imagen del
+  commit. Un push a dev termina en un despliegue sin intervención manual.
+- Estado del flujo por ramas: dev validado; stage y main pendientes de promoción (PR
+  dev -> stage; PR stage -> main con aprobación del usuario en el environment prod).
 - Pendiente: construir y probar la imagen (Docker Desktop apagado en el momento),
   src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
   demostración de monitoreo diciembre vs enero registrada en MLflow, configuración de
