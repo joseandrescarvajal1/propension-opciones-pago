@@ -114,7 +114,10 @@ def revisar_salida(respuesta: str, verificado: bool, ofertas_autorizadas: list[d
     r = respuesta or ""
     bajo = r.lower()
     violaciones = []
-    if not verificado and not codigo_pendiente and otp_enviado_turno == 0 and re.search(r"(envi(é|e|amos|ado|aremos|ó)|te lleg|recibir[aá]s)[^.]{0,80}c[oó]digo", bajo):
+    ENVIO = r"(envi\w*|te lleg\w*|recibir[aá]s|mandamos|mandar|mandado)"   # enviar, enviamos, envié, enviado, envío…
+    CODIGO = r"c[oó]digo"
+    afirma_envio = re.search(ENVIO + r"[^.]{0,80}" + CODIGO, bajo) or re.search(CODIGO + r"[^.]{0,80}" + ENVIO, bajo)
+    if not verificado and not codigo_pendiente and otp_enviado_turno == 0 and afirma_envio:
         violaciones.append("afirma que se envió un código de verificación sin que se haya enviado (hay que llamar a buscar_cliente)")
     if registros_turno == 0 and re.search(r"(qued[oó] registrad|queda registrad|ya (te )?registr[eé]|hemos registrado|acabo de registrar|registr[eé] tu)", bajo):
         violaciones.append("afirma que algo quedó registrado sin que una herramienta lo haya registrado en este turno")
