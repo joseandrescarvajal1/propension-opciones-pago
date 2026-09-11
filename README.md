@@ -7,10 +7,10 @@ Modelo que estima, con un mes de anticipación, la probabilidad de que una oblig
 | Carpeta | Contenido |
 |---|---|
 | `notebooks/` | Exploración (02), construcción del dataset (01), modelos (03 a 09). Cada notebook registra sus experimentos en MLflow. |
-| `src/` | `download_data.py` (descarga de Kaggle), `tracking.py` (MLflow), `inferencia.py` (carga del modelo y predicción), `monitoreo.py` (PSI y desempeño), `mlflow_ui.py`. |
+| `src/` | `download_data.py` (descarga), `features.py` (variables con corte t-1), `entrenar.py` (entrenamiento reproducible), `inferencia.py` (predicción), `monitoreo.py` y `monitoreo_mensual.py` (PSI y desempeño), `tracking.py` (MLflow), `mlflow_ui.py`. |
 | `api/` | API FastAPI: `/health`, `/version`, `/predict`. |
-| `tests/` | Pruebas unitarias con pytest (inferencia, API, monitoreo). |
-| `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`. |
+| `tests/` | 44 pruebas unitarias con pytest (variables y no fuga temporal, inferencia, API, monitoreo). |
+| `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual). |
 | `.github/workflows/` | `ci.yml` (lint, pruebas, imagen) y `deploy.yml` (despliegue por rama). |
 | `docs/` | Bitácora del proyecto, texto de la competencia, diccionarios, plan de MLOps. |
 
@@ -26,6 +26,16 @@ python src/mlflow_ui.py         # interfaz de experimentos en http://127.0.0.1:5
 ```
 
 Los notebooks se ejecutan en orden: 01 (dataset) y 02 (EDA) primero; 03 a 09 después.
+
+### Entrenamiento reproducible y monitoreo
+
+```bash
+python src/entrenar.py --version v5              # valida en diciembre, reentrena, empaqueta models/v5 y escribe outputs/resultado_prueba.csv
+python src/entrenar.py --version v5 --reconstruir  # además reconstruye el dataset desde los CSV con src/features.py
+python src/monitoreo_mensual.py --mes 202401     # PSI por variable y deriva de la predicción (entrenamiento vs enero), run en MLflow
+```
+
+`src/features.py` contiene la construcción de variables con corte en t-1 (misma lógica que los notebooks 01 y 06; verificada columna a columna). La lista de variables del modelo está en `configs/variables_modelo.json`.
 
 ### API
 

@@ -20,7 +20,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 [tool.coverage.run]
 # Cobertura solo sobre el código que corre en producción (API e inferencia) y el monitoreo.
 source = ["src", "api"]
-omit = ["src/download_data.py", "src/mlflow_ui.py", "src/tracking.py", "src/catboost_v2_oot.py"]
+omit = ["src/download_data.py", "src/mlflow_ui.py", "src/tracking.py", "src/catboost_v2_oot.py", "src/entrenar.py", "src/monitoreo_mensual.py"]  # scripts de orquestación (necesitan datos reales)
 
 [tool.coverage.report]
 fail_under = 80
