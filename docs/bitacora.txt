@@ -1604,6 +1604,20 @@ ETAPA 15 · ENTREGABLES
 - Marca explícita de lo implementado frente a lo propuesto, para que el evaluador distinga.
 - Cubre también la exigencia del entregable 4 de incluir diagramas del framework de agentes.
 
+15.3 Entregable 1: documento técnico (docs/documento_tecnico.md)
+- Límite de 4.000 caracteres excluyendo anexos, imágenes y tablas. Primera versión: 6.990; tras
+  cuatro pasadas de recorte quedó en 3.828 (cuerpo 3.131 + declaración de IA 697), con 172 de
+  margen. El detalle que se sacrificó vive en docs/arquitectura.md, que se referencia al inicio.
+- Estructura: tabla de resultados (excluida del conteo), Parte 1 (dataset con corte t-1, el
+  hallazgo de la validación temporal frente a la aleatoria, modelo y umbral 0,33, techo de la
+  métrica por ambigüedad de la etiqueta, producción), Parte 2 (grafo, la decisión de que el LLM
+  nunca decide qué ofrecer, integración con el 35 % de decisiones que cambia el modelo, seguridad
+  por OTP y guardrails, evaluación con el fallo que encontró la suite), supuestos, riesgos,
+  conclusión y datos que más aportarían.
+- Declaración de uso de IA generativa: Claude Code como asistente en todo el desarrollo, con la
+  lista de decisiones tomadas por el candidato, y mención de que la solución construida usa
+  Gemini 2.5 Flash en Vertex AI y valores SHAP.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
@@ -1628,7 +1642,7 @@ deterministas + 77 verificaciones de escenario con LLM real), propuesta de opera
 producción y despliegue de demostración en Cloud Run consumiendo el modelo de producción con
 explicabilidad SHAP.
 Pendiente para la entrega (ambas partes):
-- Documento técnico (máximo 4,000 caracteres) con la declaración de uso de IA generativa.
+- Documento técnico (máximo 4,000 caracteres): HECHO (docs/documento_tecnico.md, 3.828).
 - Documento y diagrama de arquitectura de las dos partes: HECHO (docs/arquitectura.md).
 - Presentación ejecutiva de 15 minutos.
 - Opcional: enganchar el agente y el front al pipeline por rama (hoy se despliegan con
