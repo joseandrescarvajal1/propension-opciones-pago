@@ -1441,11 +1441,48 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
   us-central1 --min-instances 0 (el estado del sandbox se pierde al reciclar la instancia, es
   el compromiso aceptado para la demo; en producción va a Cloud SQL o Firestore).
 
+14.10 Promoción a producción y validación de extremo a extremo (2026-09-11, tarde)
+- Se promovieron a producción los tres commits que estaban en dev: 7fb7538 (explicabilidad
+  SHAP), ee85bb6 (Parte 2) y dd458ae (despliegue del agente). PR #6 dev -> stage y PR #7
+  stage -> main, ambos con el pipeline en verde (lint, 123 pruebas, cobertura 92 %, imagen).
+  Los PR los abrió el candidato: el ayudante de credenciales de Git dejó de entregar el token
+  a la sesión (a git push sí le responde, a "git credential fill" no), así que no se pudieron
+  crear por API.
+- Despliegue en producción: revisión propension-api-prod-00003. Como el pipeline de main usa
+  canario, quedó al 10 % del tráfico y la revisión anterior (sin /explain) conservó el 90 %.
+  Comprobación: de 20 llamadas seguidas a /explain, 18 devolvieron 404 (revisión vieja) y 2
+  devolvieron 422 (la ruta existe y rechaza el cuerpo vacío, como debe ser). En consecuencia
+  el agente seguía usando el respaldo a /predict en 9 de cada 10 decisiones.
+- El candidato ejecutó la promoción del canario al 100 %
+  (gcloud run services update-traffic propension-api-prod --region us-central1 --to-latest).
+  Validación posterior: tráfico 100 % en la revisión 00003; 20 de 20 llamadas a /explain
+  responden 422 (ya no hay 404); /version reporta modelo v4, umbral 0.33 y 100 variables.
+- Validación del agente en Cloud Run contra el modelo de producción: los 8 clientes
+  consultados devuelven fuente "api" con 5 factores SHAP cada uno (antes 0). Probabilidades
+  observadas entre 0.638 y 0.978. El agente no necesitó redespliegue: su lógica intenta
+  /explain en cada llamada y solo cae a /predict si recibe 404.
+- Ejemplo de explicación que ya entrega el sistema (cliente Ana María Gómez, acción
+  ACUERDO_PAGO, probabilidad 0.968 frente a umbral 0.33), con los nombres técnicos traducidos
+  por glosario.py:
+    sube +0.978  meses desde la última vez que el cliente aceptó una opción de pago (valor 1)
+    sube +0.298  proporción histórica de opciones aceptadas por el cliente (valor 1)
+    sube +0.231  resultado de la última gestión, aceptó (valor 1)
+    sube +0.224  score de propensión de pago del banco el mes anterior (valor 0.81)
+    sube +0.182  comportamiento de pago del mes anterior (valor PAGO_MENOS)
+  Es la frase que el agente convierte en justificación para el cliente y para el gestor, y
+  cierra el criterio de explicabilidad que pide el enunciado para ambas partes.
+- Estado de la demostración: cadena completa funcionando en la nube. Front en local (puerto
+  8600 con AGENTE_API_URL apuntando al servicio) -> API del agente en Cloud Run
+  (agente-cobranza-demo, con token de identidad IAM y X-API-Key) -> Vertex AI (Gemini 2.5
+  Flash y Flash-Lite) -> API del modelo en producción (propension-api-prod, /explain) ->
+  paquete v4 en Cloud Storage. También queda disponible el front contra la API local
+  (puertos 8501 y 8001) para trabajar sin red.
+
 ======================================================================
-PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 13:10)
+PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
 Parte 1 (modelo + MLOps), lo que falta:
-- Explicabilidad: HECHA (etapa 13). El agente consumirá /explain.
+- Explicabilidad: HECHA (etapa 13) y en producción desde el 2026-09-11; el agente la consume.
 - Documento de arquitectura (entregable 5): diagrama del ciclo completo con lo construido
   (datos, features t-1, entrenamiento reproducible, MLflow, paquete en bucket, API, Docker,
   Cloud Run por ambientes, CI/CD con compuertas, monitoreo PSI, reentreno) y evoluciones
@@ -1454,16 +1491,24 @@ Parte 1 (modelo + MLOps), lo que falta:
   IA generativa. Base: esta bitácora.
 - Archivo final de resultados: outputs/resultado_prueba.csv ya existe (paquete v5 =
   modelo v4, F1 público 0.71421); confirmar que sea la versión a entregar.
-- Producción: la revisión 00002 está al 10 % del tráfico; promover al 100 % cuando se
-  decida (gcloud run services update-traffic propension-api-prod --to-latest).
+- Producción: HECHO. La revisión 00003 (con /explain) quedó al 100 % del tráfico el
+  2026-09-11; validado con 20 llamadas y con el agente recibiendo factores SHAP.
 - Presentación ejecutiva (entregable 2), al final.
 Mejora del modelo (aparcada por decisión del usuario): variables de ruta y umbral por
 segmento no aportaron; la vía pendiente es tratar la ambigüedad de la clase e ("sin
 oferta"), que es el techo del F1.
-Parte 2 (sistema agéntico, 50 % de la nota): prototipo, pruebas, propuesta de operación y
-despliegue de demostración en Cloud Run HECHOS (etapa 14). Pendiente: documento técnico,
-arquitectura de las dos partes, presentación y promover dev -> stage -> main para que la API
-del modelo en producción exponga /explain (hoy el agente cae a /predict, sin factores SHAP).
+Parte 2 (sistema agéntico, 50 % de la nota): HECHA (etapa 14). Prototipo, pruebas (74
+deterministas + 77 verificaciones de escenario con LLM real), propuesta de operación en
+producción y despliegue de demostración en Cloud Run consumiendo el modelo de producción con
+explicabilidad SHAP.
+Pendiente para la entrega (ambas partes):
+- Documento técnico (máximo 4,000 caracteres) con la declaración de uso de IA generativa.
+- Documento y diagrama de arquitectura de las dos partes.
+- Presentación ejecutiva de 15 minutos.
+- Opcional: enganchar el agente al pipeline por rama (hoy se despliega con
+  gcloud builds submit --config deploy/cloudbuild_agente.yaml) y apagar la instancia mínima
+  del servicio de demostración cuando no se esté usando
+  (gcloud run services update agente-cobranza-demo --region us-central1 --min-instances 0).
 
 ======================================================================
 DECLARACIÓN DE USO DE IA GENERATIVA (en construcción)
