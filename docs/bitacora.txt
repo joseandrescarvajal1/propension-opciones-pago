@@ -1533,6 +1533,39 @@ ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
   que se usa en local y con la que pasan las 123 pruebas) y porque la imagen de la API del modelo
   se construye solo con api/requirements.txt, de modo que producción no se ve afectada.
 
+14.14 El agente justifica con los factores del modelo (SHAP en la conversación)
+- Hallazgo: al revisar una conversación real se vio que los factores SHAP llegaban al agente y se
+  mostraban en la ficha y en las trazas, pero el agente justificaba sus propuestas solo con las
+  ventajas del producto ("te da dos meses sin cuota"), sin usar el comportamiento del cliente.
+  La explicabilidad quedaba a medias justo donde la ve el cliente.
+- Cambios: evaluar_siguiente_accion devuelve ahora motivos_del_cliente en el primer nivel del
+  resultado (factor redactado, peso y si va a favor) más una instrucción de uso; el prompt exige
+  que toda propuesta se apoye en al menos un dato del propio cliente, con ejemplos de lo que sí y
+  lo que no, y prohíbe las palabras modelo, score, probabilidad, sistema calculó y algoritmo.
+- Verificación nueva en la suite (justifica_con_el_cliente): el juez recibe los factores del
+  modelo y la respuesta del agente y decide si la justificación se apoya en un rasgo del cliente
+  o solo en el producto. La suite pasa de 77 a 78 verificaciones.
+- Resultado en la misma clienta de la prueba (Valentina Pérez, prórroga): antes decía "te da un
+  respiro de 2 meses sin pagar cuota"; ahora dice "te la recomiendo porque, viendo tu historial,
+  has tomado alternativas de pago antes y te han funcionado", que corresponde a los dos factores
+  de mayor peso (meses desde la última aceptación y proporción histórica de aceptación).
+
+14.15 Dos fallas de seguridad detectadas por la suite y corregidas
+- Corrida 4: 75/78. Fallaron el bloqueo tras tres códigos incorrectos y el cierre del hilo.
+- Causa real: en el primer turno el agente afirmó "escríbeme el código que te acabamos de enviar"
+  sin haber llamado a ninguna herramienta, así que no existía ningún código; el intento del
+  cliente se perdió y solo se validaron dos de los tres códigos incorrectos. La regla
+  determinista que debía impedir esa afirmación no se disparó por dos motivos: el patrón exigía
+  el verbo antes del sustantivo ("envié ... código") y no cubría el infinitivo "enviar".
+- Correcciones: el patrón acepta ahora las dos órdenes de palabras y cualquier forma del verbo
+  (envi\w*), y el prompt prohíbe explícitamente afirmar un envío sin que la herramienta lo haya
+  confirmado en el mismo turno. Se añadieron dos pruebas deterministas con la redacción invertida.
+- Corrida 5: 78/78. Por tipo: funcional 20, integración 7, seguridad 32, robustez 7, calidad 12.
+  Latencia p50 3,9 s y p95 10,7 s; juez de calidad entre 4,12 y 4,88. Pruebas deterministas: 125.
+- Lectura para el documento: las dos suites cumplieron su función. La de escenarios encontró un
+  fallo de seguridad que ninguna prueba unitaria habría visto, porque nacía de una alucinación del
+  modelo de lenguaje; y la corrección se fijó luego como prueba determinista para que no reaparezca.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
