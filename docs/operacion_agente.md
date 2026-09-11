@@ -15,7 +15,7 @@ Lo que ya existe en el prototipo se marca como **[hecho]**; lo demás es la prop
 | Estado por hilo | SQLite (`checkpoints.db`) **[hecho]** | Checkpointer de LangGraph sobre Cloud SQL (Postgres) o Firestore; `thread_id` = cédula + canal |
 | Datos del cliente | SQLite del sandbox **[hecho]** | Servicios del banco (core de cartera, motor de preaprobados, restricciones) detrás de las mismas herramientas; el agente no accede a bases directas |
 | Trazas | Tabla `trazas` y MLflow **[hecho]** | BigQuery (trazas de negocio) + Cloud Logging; LangSmith o Vertex AI Agent Engine para las trazas del LLM (prompts, tokens, latencia por nodo) |
-| Front de pruebas | Streamlit **[hecho]** | Consola del gestor humano (bandeja de escalamientos) integrada al CRM de cobranza |
+| Front de pruebas | Streamlit, en local y desplegado en Cloud Run con contraseña **[hecho]** | Consola del gestor humano (bandeja de escalamientos) integrada al CRM de cobranza, detrás del inicio de sesión corporativo (IAP o el proveedor de identidad del banco) |
 
 ## 2. Seguridad y cumplimiento
 
