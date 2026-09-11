@@ -1,0 +1,27 @@
+[project]
+name = "propension-opciones-pago"
+version = "1.0.0"
+description = "Modelo de propensión a aceptar una opción de pago (obligaciones en mora) y su API."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 220
+target-version = "py312"
+extend-exclude = ["notebooks", "data", "mlruns", "models", "outputs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E402", "E701", "E702", "E731", "E741"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+# Cobertura solo sobre el código que corre en producción (API e inferencia) y el monitoreo.
+source = ["src", "api"]
+omit = ["src/download_data.py", "src/mlflow_ui.py", "src/tracking.py", "src/catboost_v2_oot.py"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

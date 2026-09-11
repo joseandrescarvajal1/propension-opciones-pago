@@ -1,0 +1,61 @@
+# Servicio de Cloud Run (plantilla). Los marcadores ${...} los sustituye el pipeline:
+#   ENV          dev | stage | prod
+#   IMAGE        ruta completa de la imagen en Artifact Registry con etiqueta = hash del commit
+#   PROJECT_ID   proyecto de GCP
+#   MODELO_RUTA  gs://<bucket>/modelos/v4
+#   MIN_INSTANCES  0 en dev, 1 en stage y prod
+# Despliegue: gcloud run services replace deploy/service.yaml --region us-central1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: propension-api-${ENV}
+  labels:
+    app: propension-opciones-pago
+    entorno: ${ENV}
+  annotations:
+    run.googleapis.com/ingress: internal-and-cloud-load-balancing   # sin acceso público directo
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "${MIN_INSTANCES}"
+        autoscaling.knative.dev/maxScale: "10"          # escalado automático por concurrencia
+        run.googleapis.com/cpu-throttling: "false"      # CPU siempre asignada (modelo en memoria)
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 60
+      serviceAccountName: propension-api-sa@${PROJECT_ID}.iam.gserviceaccount.com   # permisos mínimos: leer bucket + secretos
+      containers:
+        - image: ${IMAGE}
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: MODELO_RUTA
+              value: ${MODELO_RUTA}
+            - name: MAX_FILAS
+              value: "1000"
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: propension-api-key      # Secret Manager
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+  traffic:
+    - percent: 100
+      latestRevision: true

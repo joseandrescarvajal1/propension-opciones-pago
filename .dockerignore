@@ -1,0 +1,6 @@
+# Solo entran a la imagen api/ y src/inferencia.py (ver deploy/Dockerfile). Todo lo demás queda fuera del contexto.
+*
+!api/
+!src/inferencia.py
+**/__pycache__/
+**/*.pyc

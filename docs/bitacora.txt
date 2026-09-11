@@ -1,0 +1,995 @@
+BITÁCORA DEL PROYECTO
+Prueba Analítica: Modelo Opciones de Pago season 3 (Bancolombia / Kaggle)
+Inicio: 2026-09-09
+Propósito de este archivo: registro cronológico de todo lo hecho, con hallazgos y decisiones,
+para construir después el documento técnico y la presentación ejecutiva.
+
+======================================================================
+ETAPA 0. ENTENDIMIENTO DE LA PRUEBA (2026-09-09)
+======================================================================
+
+0.1 Acceso a la competencia
+- La competencia es privada en Kaggle (por invitación). La web devuelve 404 sin sesión.
+- Se accedió con la API de Kaggle (CLI 2.2.4, token tipo KGAT). Cuenta: josecarvajalbautista.
+- El token se guarda en .env (excluido de git) y hay un .env.example para quien clone el repo.
+
+0.2 Qué pide la prueba (resumen del enunciado)
+- Contexto de negocio: clientes en mora reciben hasta 3 opciones de pago preaprobadas por
+  obligación al mes (ampliación de plazo, reducción de cuota, reestructuración, etc.).
+  Tras aplicar una opción, la obligación debe esperar 3 a 4 meses para otra. Además existen
+  acuerdos de pago (compromiso de pagar en 5 días) que solo se ofrecen si el cliente no
+  aceptó una opción de pago.
+- El banco quiere saber con un mes de anticipación qué obligaciones aceptarán una opción
+  de pago, para usar ese score como variable adicional en su priorización por lotes.
+- La prueba tiene DOS partes:
+  Parte 1: modelo de ML de propensión a aceptar opción de pago (ventana de un mes),
+           presentado como solución E2E con MLOps (preparación, entrenamiento, inferencia,
+           productización, despliegue continuo, monitoreo).
+  Parte 2: prototipo funcional de sistema agéntico (agentes de IA coordinados) que decida
+           la siguiente mejor acción para clientes en mora, ofrezca solo opciones elegibles,
+           respete reglas de negocio, tenga trazabilidad y escale a humano cuando toque.
+           Debe integrarse con el modelo de la Parte 1 y probarse con escenarios simulados.
+- Pesos de calificación:
+  Parte 1 (MLOps + modelo) = 35 %
+  Parte 2 (sistema agéntico + LLMOps) = 50 %
+  Criterios generales (documentación, comunicación, presentación) = 15 %
+- Evaluación en Kaggle: F1 Score sobre enero de 2024 (muestra fuera de tiempo).
+  Leaderboard público sobre el 30 % del test. 3 envíos por día. Equipo de 1 persona.
+  Benchmark del leaderboard: F1 = 0.50127 (equivale a predecir todo en 1).
+- Entregables (se envían por correo, no por Kaggle):
+  1. Documento técnico, máximo 4.000 caracteres sin anexos.
+  2. Presentación ejecutiva de 15 min (5 de ellos para directivos no técnicos). Se usa
+     en la sustentación, no se entrega con la prueba.
+  3. Archivo resultado_prueba.csv con columnas ID, var_rpta_alt, Prob_uno para todas las
+     obligaciones del test. ID = nit#num_oblig_orig#num_oblig.
+  4. Código en repositorio Git reproducible.
+  5. Propuesta de arquitectura de alto nivel para operar la solución en producción.
+- Reglas relevantes:
+  - Máximo 30 horas de dedicación total.
+  - Se permite IA generativa, pero hay que declarar explícitamente en qué se usó y qué
+    decisiones tomó el candidato. Es parte de la evaluación.
+  - No se permite asesoría de otras personas.
+  - "La duplicidad, inconsistencia o falta de completitud en los datos es parte del
+    problema a resolver".
+  - No es obligatorio usar todos los datos; la selección debe estar justificada.
+  - Se valora más la metodología, arquitectura y comprensión del negocio que el F1.
+  - Se acepta concluir que no es posible un modelo robusto si se argumenta bien.
+
+0.3 Escenarios que el sistema agéntico debe cubrir (del enunciado)
+- Cliente con mora temprana y alta probabilidad de pago: proponer acuerdo de pago a 5 días.
+- Cliente elegible para varias opciones: seleccionar y explicar la más adecuada.
+- Cliente no elegible o con opción aplicada recientemente: no ofrecer nada no autorizado.
+- Cliente que rechaza, pide otra alternativa o incumple un acuerdo previo.
+- Cliente que contacta de forma reactiva para consultar deuda o negociar.
+- Información incompleta, contradictoria o servicio no disponible.
+- Solicitudes sensibles, intentos de manipulación o casos que requieren gestor humano.
+
+======================================================================
+ETAPA 1. PREPARACIÓN DEL ENTORNO Y DESCARGA DE DATOS (2026-09-09)
+======================================================================
+
+1.1 Estructura del proyecto creada
+  Bancolombia/
+    .env, .env.example      -> token de Kaggle (el .env no se versiona)
+    .gitignore              -> excluye data/, .env, __pycache__
+    requirements.txt        -> kaggle, pandas, numpy, pyarrow, openpyxl, python-dotenv,
+                               scikit-learn, tabulate, jupyter
+    src/download_data.py    -> descarga y descomprime los datos en data/
+    src/tracking.py         -> registro de experimentos en MLflow (iniciar, registrar_busqueda,
+                               registrar_final, registrar_kaggle)
+    mlflow.db, mlruns/      -> base SQLite y artefactos de MLflow (excluidos de git)
+    data/                   -> 7 archivos crudos de la competencia (1.27 GB)
+    data/processed/         -> dataset construido (train.parquet, test.parquet)
+    docs/kaggle/            -> texto de Kaggle copiado tal cual (8 .md + README)
+    docs/diccionario_dataset.md -> variables del dataset construido
+    docs/bitacora.txt       -> este archivo
+    notebooks/02_eda.ipynb  -> análisis exploratorio (centraliza todo el EDA)
+    notebooks/01_construccion_dataset.ipynb -> construcción del dataset
+    notebooks/03_modelo_baseline.ipynb -> LightGBM base, validación temporal, primer envío
+    notebooks/04_xgboost_catboost.ipynb -> partición 80/10/10, XGBoost y CatBoost con
+                                           búsqueda de hiperparámetros
+    notebooks/05_logistica_svm.ipynb    -> misma partición, regresión logística y SVM con
+                                           pipeline de preparación
+    notebooks/06_feature_engineering.ipynb -> variables nuevas + XGBoost/CatBoost con Optuna
+    notebooks/07_validacion_temporal.ipynb -> selección con validación temporal de 3 cortes,
+                                              validación adversaria, recencia, ensamble
+    notebooks/08_importancia_variables.ipynb -> importancia (ganancia + permutación) y
+                                                reentreno con las k más importantes
+    notebooks/09_multiclase_ruta.ipynb -> multiclase sobre tipo_var_rpta_alt + historial de
+                                          la ruta de gestión (ataca los falsos positivos)
+    src/catboost_v2_oot.py  -> reentrena CatBoost del 04 con todo el train y califica oot
+    outputs/                -> submission.csv, resultado_prueba.csv (y versiones v2)
+    models/                 -> modelos guardados (excluida de git)
+    requirements.txt        -> + matplotlib, lightgbm, xgboost, catboost
+
+1.2 Datos descargados (7 archivos)
+  Metadata.xlsx                                                        16 KB
+  prueba_op_base_pivot_var_rpta_alt_enmascarado_trtest.csv           233 MB  (train)
+  prueba_op_base_pivot_var_rpta_alt_enmascarado_oot.csv                3 MB  (test)
+  prueba_op_probabilidad_oblig_base_hist_enmascarado_completa.csv    391 MB
+  prueba_op_maestra_cuotas_pagos_mes_hist_enmascarado_completa.csv   515 MB
+  prueba_op_master_customer_data_enmascarado_completa.csv            128 MB
+  sample_submission.csv                                                3 MB
+
+1.3 Documentación de Kaggle copiada tal cual a docs/kaggle/
+  01_overview_description.md, 02_overview_evaluation.md,
+  03_overview_porcentajes_evaluacion.md, 04_overview_consideraciones_generales.md,
+  05_data_description.md, 06_rules.md, 07_diccionario_variables.md (del Metadata.xlsx).
+
+======================================================================
+ETAPA 2. EXPLORACIÓN DE LOS DATOS (2026-09-09 / 2026-09-10)
+======================================================================
+Notebook: notebooks/02_eda.ipynb (ejecutado, con gráficos). Reemplaza al script src/eda.py
+y a los reportes docs/eda_report.md y docs/kaggle/08_perfil_datos.md, que se eliminaron
+para centralizar toda la exploración en un solo lugar.
+Contenido del notebook: inventario de fuentes y cobertura de llaves; clasificación de
+tipos de variables (identificador, fecha, etiqueta, binaria, numérica continua/discreta,
+categórica) cruzada con el diccionario del Metadata.xlsx; distribución de la etiqueta
+(global, por mes, por tipo de respuesta, por producto/segmento/opciones preaprobadas) y
+su persistencia mes a mes; nulos (incluido el texto "None" y los nulos estructurales);
+duplicados (filas idénticas y llaves repetidas); distribuciones numéricas (percentiles e
+histogramas en log) y categóricas; outliers por IQR x3 y p99.9 más valores imposibles
+por regla de negocio; resumen de hallazgos e implicaciones. Cada gráfico va seguido de
+una celda "Lectura" con su interpretación breve (15 gráficos, 2 tablas). Numerado 02 por
+decisión del usuario (01 = construcción del dataset).
+
+Historial de cambios del notebook de EDA (2026-09-10):
+- v1: versión larga con muchas tablas. Rechazada: demasiado texto y tablas.
+- v2: versión concisa, 14 gráficos, texto mínimo.
+- v3: figuras más grandes (130 dpi, máximo 3 paneles por fila).
+- v4: celda "Lectura" debajo de cada gráfico; renombrado de 00_eda a 02_eda.
+- v5: nueva sección 2 "Variables de train frente a test": X_train tiene 49 columnas y
+  X_test solo 4 (las llaves). Las 45 restantes se clasifican por disponibilidad para el
+  test: 2 etiqueta, 6 descriptores recuperables desde pagos en t-1, 22 solo rezagadas
+  (opciones, mora, saldo, pago del mes) y 15 de gestión/resultado del mes que son fuga de
+  información. Justifica que X se construya desde las tablas históricas con corte en t-1.
+  Se discutió eliminarla; se decidió conservarla acortada (intro de una línea, gráfico,
+  lectura de dos frases) porque sustenta el diseño del dataset y sirve para la PPT.
+- v6: textos reescritos sin preguntas. Cada gráfico lleva una descripción concreta encima
+  (qué muestra) y una "Lectura" debajo (qué significa). 15 gráficos, 53 celdas.
+- v7: nueva sección 10 "Selección de variables" sobre el dataset construido (133 vars):
+  * Paso 1, eliminación por criterio (37 vars, quedan 96): nulos >50 % (3), casi constante
+    (1), rezagos de trtest que duplican obl_ de pagos (5), rezagos redundantes con pagos o
+    con el target rezagado (10), valores crudos t-2/t-3 ya resumidos (8), ventanas
+    duplicadas suma/promedio y ajuste/rediferido (10).
+  * Paso 2, varianza baja (umbral: valor dominante >99 %): eliminadas 2
+    (pag_n_rediferido_1m, pag_ajustes_banco_t1). Quedan 94.
+  * Paso 3, correlación de Spearman |r|>=0,90 entre numéricas, muestra de 150k: en cada
+    par se conserva la de menos nulos; a cobertura similar, la primera del dataset.
+    Eliminadas 17 (ventanas consecutivas de cuota/pago/porc_pago, prob t1 vs mean3,
+    patrimonio vs activos, copias del acepto previo). Quedan 77.
+  * Lista final en data/processed/features_seleccionadas.csv: cli 19, pag 24, lag 14,
+    prob 9, pagcli 5, obl 3, lagcli 3. Validación pendiente en notebook 03: comparar F1
+    en diciembre con 133 vs 77 variables.
+  * Se había incluido un AUC univariado por variable como diagnóstico y desempate; se
+    retiró por decisión del usuario (no es una medida que use). Las categóricas no entran
+    en el paso de correlación; pendiente definir su tratamiento.
+
+Flujo definido para pronosticar y subir a Kaggle (notebook 03, pendiente):
+1. Validación local: entrenar con 2023-08 a 2023-11, predecir 2023-12, medir F1 y elegir
+   el umbral de probabilidad que lo maximiza. Comparar entrenar con 5 meses vs excluir
+   agosto (agosto no tiene variables rezagadas de trtest).
+2. Reentrenar con los 5 meses y aplicar a data/processed/test.parquet (133 variables).
+3. Salidas: submission.csv (ID, var_rpta_alt 0/1) para Kaggle y resultado_prueba.csv
+   (ID, var_rpta_alt, Prob_uno) para el correo. 112,549 filas, orden del sample_submission.
+4. Subir con: python -m kaggle competitions submit <competencia> -f submission.csv -m "..."
+   y consultar el F1 público con: python -m kaggle competitions submissions <competencia>.
+
+
+2.1 Descripción de las fuentes
+  Tabla                 Filas       Grano              Periodo            Llave
+  trtest (train)        568,251     obligación x mes   2023-08 a 2023-12  nit, num_oblig_orig, num_oblig, fecha
+  oot (test)            112,549     obligación         2024-01            mismas 4 llaves (solo llaves)
+  probabilidades        4,804,836   obligación x mes   2023-01 a 2023-12  num_oblig, fecha_corte (AAAAMM)
+  cuotas y pagos        4,855,035   obligación x mes   2023-01 a 2023-12  num_oblig, fecha_corte (AAAAMMDD)
+  master customer       430,000     cliente x mes      2023-07 a 2023-12  nit, year, month
+  sample_submission     112,549     obligación         2024-01            ID
+
+2.2 La etiqueta (y)
+- var_rpta_alt en trtest: 1 = aceptó opción de pago, 0 = no aceptó. 48.0 % de unos.
+  Estable por mes (46.3 % a 49.4 %).
+- tipo_var_rpta_alt es la etiqueta desglosada (a,b,c -> 1; d,e -> 0). No es feature.
+- 400,510 obligaciones únicas y 267,256 clientes únicos en train. Una obligación aparece
+  en promedio 1.4 meses.
+- La etiqueta tiene memoria: si la obligación aceptó el mes anterior, acepta de nuevo el
+  64.8 % de las veces; si no aceptó, no acepta el 65.2 %.
+
+2.3 Hallazgo clave: fuga de información (leakage)
+- El test de enero trae SOLO llaves. Ninguna de las 45 variables de trtest existe para
+  el mes a predecir.
+- Las variables de trtest describen el resultado de la gestión en el mismo mes del target.
+  AUC contra la etiqueta en el mismo mes: marca_alternativa 0.967, marca_alternativa_orig
+  0.965, descripcion_ranking_mejor_ult 0.945, marca_alt_rank 0.912, marca_alt_apli 0.827
+  (SI => target 1 en el 100 % de los casos), alternativa_aplicada_agr 0.816, marca_pago
+  0.745, dias_mora_fin 0.730, pago_mes 0.691, cant_gestiones 0.641.
+- Conclusión: no pueden usarse como features del mismo mes. Solo sirven rezagadas
+  (lo que pasó con esa obligación en meses anteriores).
+
+2.4 Cobertura de las tablas históricas para el test (a corte 2023-12)
+- Probabilidades: 99.8 % de las obligaciones del test.
+- Cuotas y pagos: 99.8 %. Mediana de 12 meses de historial.
+- Master customer: 80.4 % de los clientes.
+- 48.6 % de las obligaciones del test y 62.7 % de los clientes aparecen en el train.
+
+2.5 Poder predictivo univariado de señales rezagadas a t-1 (AUC, máx(AUC, 1-AUC))
+  Target de la misma obligación el mes anterior   0.677  (cobertura 22 %)
+  prob_propension                                 0.593
+  prob_auto_cura                                  0.582
+  prob_alrt_temprana                              0.571
+  pago_total mes anterior                         0.565
+  valor_cuota_mes mes anterior                    0.565
+  endeudamiento / saldo_capital rezagados         0.56   (cobertura 22 %)
+  lote de priorización                            0.556
+  demografía (pasivos, egresos, activos, edad)    0.51 a 0.52
+- Ninguna señal sola es fuerte. Los scores internos del banco son lo mejor disponible
+  para toda la base. Se espera un F1 moderado y así debe comunicarse.
+
+2.6 Tasas de aceptación por segmento (train)
+  producto: TARJETA DE CREDITO 0.527 (243k), LIBRE INVERSION 0.467 (201k), ROTATIVOS 0.436,
+            CARTERA ORDINARIA 0.372, LIBRANZA 0.310, HIPOTECARIO 0.316, SOBREGIRO 0.168
+  cant_alter_posibles: 1 -> 0.418, 2 -> 0.526, 3 -> 0.547
+  banca/segmento: Personas/Personal 0.503, Personal plus 0.508, Social 0.372,
+                  Independientes/Micropyme 0.403, Pyme/Pymes 0.228
+  rango_mora: 1-30 días 0.484, 31-90 días 0.472
+
+2.7 Problemas de calidad detectados
+- Nulos codificados como el string "None" en más de 500 mil líneas del train (pandas los
+  convierte a NaN automáticamente; Spark/SQL no).
+- 238 filas de trtest repetidas por (nit, num_oblig, mes): son la misma obligación con
+  distinto num_oblig_orig; misma etiqueta; IDs distintos. Se conservan.
+- Duplicados en tablas auxiliares: probabilidades 3, cuotas/pagos 28, customer 1.
+- cuotas/pagos: 3,773 registros con porc_pago infinito (cuota en cero) y 81,210 con
+  cuota en cero. fecha_pago nula en 28.8 % (meses sin pago).
+- trtest: 65,640 filas con max_mora > 90 aunque rango_mora solo llega a 90;
+  158,967 filas al día a fin de mes (dias_mora_fin = 0); 666 vlr_obligacion nulos.
+- customer: 1,678 edades en 0 o > 100; 728 ingresos > 1e9; 27,532 ingresos en 0;
+  tipo_vivienda 69 % nulo, nivel_academico 57 %, nicho 53 %.
+- num_oblig_orig nunca coincide con num_oblig (identificadores distintos). 292
+  obligaciones con más de un número original; 4 obligaciones con más de un cliente.
+
+2.8 Decisiones de diseño derivadas de la exploración
+- Construir X con corte estricto en t-1 desde las tablas históricas. Train y test con el
+  mismo procedimiento.
+- Validación temporal: entrenar 2023-08 a 2023-11, validar en 2023-12 (simula enero).
+- Optimizar el umbral de decisión para F1 (no dejar 0.5).
+- El leaderboard público (30 % del test) es ruidoso; no sobreajustar a él.
+
+======================================================================
+ETAPA 3. CONSTRUCCIÓN DEL DATASET (2026-09-10)
+======================================================================
+Notebook: notebooks/01_construccion_dataset.ipynb (ejecutado, con salidas guardadas)
+Salida: data/processed/train.parquet (568,251 x 141), data/processed/test.parquet
+(112,549 x 140), data/processed/features.csv, docs/diccionario_dataset.md
+
+3.1 Regla central
+- Cada fila = (obligación, mes t). Etiqueta = var_rpta_alt de t. Variables = información
+  hasta t-1. Para el test, t = 2024-01 y la información llega hasta 2023-12.
+- El mes se normalizó a un índice entero t (2023-01 = 0 ... 2024-01 = 12) porque viene
+  con tres nombres y dos formatos distintos en las fuentes.
+
+3.2 Esqueleto
+- Train: 4 llaves + etiqueta de trtest. Test: 4 llaves de oot con etiqueta vacía.
+- 680,800 filas en total. Columna ID = nit#num_oblig_orig#num_oblig.
+- Las otras 44 columnas de trtest se descartan en este paso (fuga) y se recuperan solo
+  como historia rezagada.
+
+3.3 Bloques de variables construidos (133 en total)
+  prob_   (18)  Scores internos en t-1, t-2, t-3; promedio de 3 meses; delta t-1 vs t-3.
+                Cruce por num_oblig + mes desplazado. Cobertura 99.7 %.
+  pag_    (46)  Pagos de la obligación en ventanas de 1/3/6/12 meses hasta t-1: número de
+                meses con pago, suma y promedio de pago, cuota promedio, % de pago promedio,
+                conteo de NO_PAGO, PAGO_MAS, CANCELADO, REDIFERIDOS, ajustes; meses de
+                historial; meses desde el último pago; razón pago/cuota; tendencia de la
+                cuota; marca de pago y ajustes en t-1. Implementado con matrices
+                obligación x mes y sumas acumuladas. Cobertura 99.8 %.
+  obl_    (3)   Producto, aplicativo y segmento de la obligación en t-1 (de cuotas/pagos).
+  pagcli_ (6)   Carga del cliente en t-1: número de obligaciones, cuota total, pago total,
+                obligaciones sin pago, rediferidos, razón pago/cuota.
+  cli_    (25)  Demografía y finanzas: edad, género, estado civil, vivienda, hijos,
+                dependientes, nivel académico, ocupación, declarante, segmento, subsegmento,
+                región, nicho, cliente actualizado, ingresos/activos/pasivos/egresos/
+                patrimonio en log1p, antigüedad en meses, razón pasivo/activo, razón
+                egreso/ingreso. Cruce por nit con merge_asof al último corte <= t-1.
+                Cuando no hay corte anterior se usa el primer corte posterior y se marca
+                con cli_corte_posterior = 1 (decisión documentada; las variables son
+                lentas y no dependen del resultado). Cobertura 80 % en todos los meses.
+  lag_    (32)  Historia de la obligación en trtest antes de t: último valor conocido de
+                var_rpta_alt, cant_alter_posibles, cant_gestiones, rpc, promesas,
+                acuerdos, mora mín/máx/fin, valores de obligación/vencido/saldo/
+                endeudamiento, cuota, pago, producto, banca, segmento, rango de mora,
+                primera alternativa ofrecida, ranking de gestión, alternativa aplicada;
+                número de meses vistos, número de aceptos, tasa de acepto, acepto en t-1,
+                meses desde la última gestión.
+  lagcli_ (3)   Historia del cliente en trtest antes de t: obligaciones gestionadas,
+                aceptos, tasa de acepto.
+
+3.4 Limpieza aplicada
+- porc_pago infinito -> nulo; acotado a 500 %.
+- Ingresos, activos, pasivos, egresos, patrimonio -> log1p.
+- Edad <= 0 o > 100 -> nulo. Antigüedad fuera de 0 a 900 meses -> nulo.
+- Duplicados en probabilidades, pagos y customer: se conserva el primero.
+- Los nulos NO se imputan: llevan información (obligación nueva, cliente sin ficha).
+  La imputación, si hace falta, se decide en el modelado según el algoritmo.
+
+3.5 Verificaciones de fuga
+- Cruces con probabilidades y pagos hechos desplazando el mes de la fuente (t + k);
+  ventanas terminan en t-1.
+- 0 filas con corte de demografía posterior a t-1 sin marcar.
+- Distribuciones de enero (test) comparables con diciembre (train) en variables clave:
+  prob_propension_t1 0.634 vs 0.627; pagos en 3 meses 1.77 vs 1.72; edad 40.9 vs 40.8;
+  tasa de acepto rezagada 0.417 vs 0.386.
+
+3.6 Hallazgos del notebook
+- Señal confirmada: tasa de aceptación 0.648 si aceptó la última vez, 0.348 si no,
+  0.489 sin historial.
+- Las variables lag_ no existen para agosto (la ventana arranca ahí): cobertura 0 % en
+  2023-08, 26 % en 2023-09, 44 %, 54 %, 70 % en 2023-12 y 76 % en el test. Consideración
+  para el modelado: decidir si se entrena con los 5 meses o se excluye agosto.
+- Nulos por bloque en el test: lag_ mediana 51 %, cli_ mediana 20 %, resto < 4 %.
+
+======================================================================
+ETAPA 4. SEGUIMIENTO DE EXPERIMENTOS CON MLFLOW (2026-09-10)
+======================================================================
+4.1 Decisión
+- MLflow local, sin servidor: backend SQLite (mlflow.db en la raíz) y artefactos en
+  mlruns/. MLflow 3.16 ya no acepta el backend en archivo plano; SQLite sigue siendo un
+  solo archivo. Ambos excluidos de git.
+- UN SOLO EXPERIMENTO para todo el proyecto: "opciones_pago". Dentro, un run padre
+  (grupo) por modelo y, anidados bajo él, un run por combinación de la búsqueda de
+  hiperparámetros (busqueda_01, busqueda_02, ...) y un run "final" con el modelo elegido.
+  En la interfaz los hijos se pliegan bajo el padre, así la tabla muestra una fila por
+  modelo y se despliega para ver la búsqueda.
+- Tags en todos los runs: tipo (grupo / busqueda / final), grupo, notebook, modelo,
+  validacion (temporal_dic2023 o aleatoria_80_10_10), particion.
+- Módulo src/tracking.py: grupo(nombre, **tags) como context manager;
+  registrar_busqueda(indice, params, métricas); registrar_final(params, métricas, umbral,
+  features, modelo, flavor, ruta_modelo, figuras) que además guarda modelo_info.json con el
+  umbral y la lista de variables; registrar_kaggle(run_id, f1, submission_id);
+  resumen(tipo) que devuelve la tabla de runs sin abrir la interfaz.
+- Interfaz: python src/mlflow_ui.py (apunta a la base del proyecto desde cualquier
+  carpeta) -> http://127.0.0.1:5000.
+- Incidente: una primera versión creaba un experimento por notebook y el usuario abrió la
+  interfaz sin ver runs. Se rehizo con el experimento único; para reiniciar la base hubo
+  que cerrar la interfaz que la tenía bloqueada.
+
+4.2 Registros
+- Grupos previstos: 03_lightgbm_baseline, 04_xgboost, 04_catboost, 05_logistica,
+  05_svm_lineal, 05_svm_rbf. Los notebooks 04 y 05 ya registran directamente; sus
+  ejecuciones en curso arrancaron con la versión anterior, así que sus resultados se
+  registran después a partir de las tablas que produzcan, sin reentrenar.
+- 03_lightgbm_baseline / final: auc_val 0.7589, f1_val 0.6931, f1 con umbral 0.5 0.6593,
+  precisión 0.598, recall 0.824, umbral 0.35, 77 variables, f1_kaggle_publico 0.70694
+  (submission 56152634). Artefactos: F1 vs umbral, importancia, modelo_info.json,
+  lgbm_base.txt y modelo LightGBM en formato MLflow.
+
+======================================================================
+ETAPA 5. MODELADO, MODELO BASE (2026-09-10)
+======================================================================
+Notebook: notebooks/03_modelo_baseline.ipynb (ejecutado). Salidas en outputs/ y models/.
+
+5.1 Datos
+- 77 variables seleccionadas en el EDA: 62 numéricas + 15 categóricas (marca de pago t-1,
+  producto, aplicativo, segmento, género, estado civil, ocupación, declarante, segm,
+  subsegm, región, cliente actualizado, primera opción ofrecida, su código, alternativa
+  aplicada). Las categorías se unifican entre train y test.
+
+5.2 Validación temporal
+- Train: 2023-08 a 2023-11 (467,785 filas, tasa 0.483). Validación: 2023-12 (100,466
+  filas, tasa 0.468). Diciembre no se usa para ajustar nada.
+
+5.3 Modelo base: LightGBM sin ajuste de hiperparámetros
+- objective binary, lr 0.05, 600 árboles, num_leaves 63, min_child_samples 200,
+  subsample 0.8, colsample 0.8, reg_lambda 1, seed 42. Nulos y categóricas nativas,
+  sin imputar ni codificar.
+- Resultados en diciembre: AUC 0.7589 | F1 con umbral 0.5 = 0.6593 |
+  F1 prediciendo todo 1 = 0.6378 (referencia).
+- Umbral óptimo para F1 = 0.35 -> F1 0.6931, precisión 0.598, recall 0.824,
+  64.5 % predicho como 1.
+- Importancia por bloque (ganancia): pagos 28 %, scores del banco 17 %, carga del cliente
+  14 %, demografía 12 %, historial de la obligación 12 %, descriptores 11 %, historial
+  del cliente 5 %.
+
+5.4 Modelo final y archivos
+- Reentrenado con los 5 meses, mismos parámetros. Test calificado con umbral 0.35:
+  61.2 % predicho como 1, probabilidad media 0.451.
+- outputs/submission.csv (ID, var_rpta_alt) para Kaggle; outputs/resultado_prueba.csv
+  (ID, var_rpta_alt, Prob_uno) para el correo. 112,549 filas, orden del sample_submission.
+- models/lgbm_base.txt (modelo guardado; carpeta excluida de git).
+- Comando de envío:
+  python -m kaggle competitions submit prueba-analitica-modelo-opciones-de-pago-season-3 -f outputs/submission.csv -m "lgbm base, 77 vars"
+
+5.5 Primer envío a Kaggle (2026-09-10, submission 56152634)
+- Archivo validado contra sample_submission: mismas columnas, 112,549 filas, mismo orden
+  de ID, solo 0/1, sin nulos.
+- F1 público (30 % del test): 0.70694. Supera el benchmark 0.50127 y queda por encima del
+  F1 de diciembre (0.6931), así que la validación temporal no está sobreestimando.
+- Envíos restantes ese día: 2.
+
+5.6 Observación sobre el benchmark de Kaggle (CORREGIDA 2026-09-11)
+- Primera lectura (errónea): que 0.50127 fuera "predecir todo 1", lo que implicaría ~33 %
+  de positivos en enero. Con esa tasa, el baseline no podría haber alcanzado 0.707.
+- Lectura correcta: 0.50127 es lo que da el sample_submission, que tiene unos al azar en
+  la mitad de las filas; con tasa real p, F1 = 2·p·0.5/(p+0.5) ≈ 0.49-0.50 para p ≈ 0.48.
+  Enero tiene una tasa de aceptación cercana a la del train. El umbral no sobrepredice por
+  un cambio de tasa; la única brecha es la generalización temporal.
+
+======================================================================
+ETAPA 6. XGBOOST Y CATBOOST CON PARTICIÓN 80/10/10 (2026-09-10)
+======================================================================
+Notebook: notebooks/04_xgboost_catboost.ipynb. El 03 se renombró a 03_modelo_baseline
+porque con ese modelo se empezó y se hizo el primer envío.
+
+6.1 Diseño (definido por el usuario)
+- Partición aleatoria estratificada por la etiqueta, semilla 42: X_train 80 %
+  (454,600 filas), X_val 10 % (56,825), X_test 10 % (56,826). Tasa de 1 igual en las tres
+  (0.48). X_val se usa para elegir hiperparámetros y umbral; X_test solo para la
+  evaluación final. El archivo de Kaggle (enero 2024) se llama "oot" en el notebook para
+  no confundirlo con X_test.
+- Mismas 77 variables (62 numéricas, 15 categóricas). XGBoost recibe las categóricas
+  como tipo category (enable_categorical, tree_method hist). CatBoost las recibe como
+  texto con los nulos rellenados con "NA" porque no admite nulos en categóricas.
+- Búsqueda aleatoria de hiperparámetros (ParameterSampler):
+  XGBoost, 8 combinaciones de max_depth {4,6,8}, learning_rate {0.03,0.05,0.1},
+  min_child_weight {1,5,20}, subsample {0.7,0.9}, colsample_bytree {0.6,0.8,1.0},
+  reg_lambda {1,5}; hasta 1,500 árboles con parada temprana (50) sobre X_val.
+  CatBoost, 6 combinaciones de depth {4,6,8}, learning_rate {0.03,0.06,0.1},
+  l2_leaf_reg {1,3,10}, random_strength {0.5,1,2}; hasta 1,500 iteraciones con parada
+  temprana (50) sobre X_val.
+  Criterio de selección: F1 en X_val con el mejor umbral (grilla 0.20 a 0.80).
+- Evaluación en X_test: AUC, F1, precisión, recall y % predicho 1 con el umbral fijado
+  en X_val; matrices de confusión de ambos modelos; curva precisión-recall con average
+  precision y línea base aleatoria (tasa de la clase 1).
+- Modelo final: el de mayor F1 en X_test se reentrena con todas las filas etiquetadas
+  (train + val + test) con sus hiperparámetros y número de árboles, califica oot con el
+  umbral de X_val y escribe outputs/submission_v2.csv y outputs/resultado_prueba_v2.csv.
+
+6.2 Nota metodológica
+- La partición 80/10/10 es aleatoria: mezcla meses, y una misma obligación puede quedar
+  en train y en test en meses distintos. Es válida para comparar modelos entre sí, pero
+  el F1 que da es más optimista que el de la validación temporal del notebook 03
+  (entrenar hasta noviembre y medir en diciembre), que es la que imita el salto a enero.
+  Referencia para comparar: baseline LightGBM, F1 0.6931 en diciembre y 0.70694 en
+  Kaggle.
+
+6.3 Resultados (ejecución 17:43 a 19:13, 90 minutos)
+- Partición: X_train 454,600 / X_val 56,825 / X_test 56,826 filas, tasa de 1 = 0.480 en las
+  tres.
+- XGBoost, búsqueda (F1 en X_val): mejor 0.7433 (AUC 0.8202) con max_depth 8, lr 0.03,
+  min_child_weight 1, subsample 0.7, colsample 0.8, reg_lambda 1. Rango 0.7190 a 0.7433.
+  Profundidad 8 > 6 > 4 de forma consistente. En las 8 combinaciones la parada temprana
+  no actuó: todas llegaron al tope de 1,500 árboles, así que el modelo aún mejoraba.
+  Tiempo por combinación 72 a 152 s.
+- CatBoost, búsqueda: mejor 0.7292 (AUC 0.8013) con depth 6, lr 0.06, l2_leaf_reg 1,
+  random_strength 0.5. Rango 0.7135 a 0.7292. También llegó al tope de 1,500 árboles.
+  Tiempo por combinación 453 a 739 s (5 a 8 veces más lento que XGBoost).
+- Evaluación en X_test (umbral fijado en X_val):
+                 umbral   AUC     F1     precisión  recall  % pred 1
+  XGBoost        0.37   0.8239  0.7468   0.6617    0.8569   0.6215
+  CatBoost       0.38   0.8041  0.7333   0.6513    0.8391   0.6184
+- Matrices de confusión en X_test (56,826 filas): XGBoost 17,602 VN / 11,947 FP /
+  3,904 FN / 23,373 VP. CatBoost 17,293 / 12,256 / 4,389 / 22,888. El error dominante en
+  ambos son los falsos positivos (21 % de las filas), consecuencia del umbral bajo que
+  maximiza F1 favoreciendo recall.
+- Curva precisión-recall: XGBoost por encima de CatBoost en todo el rango; average
+  precision 0.812 frente a 0.791; línea base aleatoria 0.48.
+- Ganador: XGBoost. Reentrenado con las 568,251 filas etiquetadas, 1,500 árboles, umbral
+  0.37. En oot (enero) predice 57.4 % de unos, probabilidad media 0.449. Archivos:
+  outputs/submission_v2.csv, outputs/resultado_prueba_v2.csv, models/xgb_v2.json (36 MB).
+- Comparación con el baseline: el F1 0.747 en X_test (partición aleatoria) no es
+  comparable directamente con el 0.693 del baseline en diciembre (validación temporal);
+  la partición aleatoria es más optimista (ver 6.2). La comparación honesta con Kaggle
+  se hace subiendo submission_v2.
+- Registro en MLflow: grupos 04_xgboost (8 búsquedas + final, ganador, con figuras,
+  xgb_v2.json y submission_v2.csv adjuntos) y 04_catboost (6 búsquedas + final), con tag
+  registro=posterior_desde_tablas porque la ejecución arrancó antes de integrar tracking.
+- Mejora pendiente derivada: subir el tope de árboles o la tasa de aprendizaje, porque
+  ningún modelo activó la parada temprana.
+
+6.4 Segundo envío a Kaggle (2026-09-11 04:46 UTC, submission 56158678): XGBoost v2
+- F1 público 0.70450, frente a 0.70694 del baseline LightGBM. Es decir, LIGERAMENTE PEOR
+  aunque en X_test (partición aleatoria) había dado 0.747 frente a 0.693 del baseline en
+  diciembre.
+- Lectura: la partición aleatoria 80/10/10 sobreestima. Mezcla meses y deja la misma
+  obligación en train y en test en meses distintos, así que el modelo profundo
+  (max_depth 8) aprende patrones de obligaciones concretas que no se repiten en enero.
+  La validación temporal (entrenar hasta noviembre, medir en diciembre) es la que predice
+  Kaggle: el baseline dio 0.693 en diciembre y 0.707 en Kaggle.
+- Consecuencia para el diseño: los hiperparámetros y el umbral deben elegirse con
+  validación temporal, no con la partición aleatoria. La partición aleatoria sirve para
+  comparar modelos entre sí, pero no para decidir qué se sube.
+- Registrado en MLflow: f1_kaggle_publico 0.70450 en 04_xgboost.
+- Tercer envío (2026-09-11 05:07 UTC, submission 56158933): CatBoost v2, mejores
+  hiperparámetros del 04 reentrenados con todo el train (1,500 árboles, umbral 0.38,
+  57.3 % de unos en oot). F1 público 0.70379. Registrado en MLflow (04_catboost) con el
+  modelo models/catboost_v2.cbm y el submission adjuntos.
+- Tabla de envíos hasta ahora:
+    submission            modelo                        F1 local         F1 Kaggle
+    56152634 (v1)         LightGBM baseline             0.6931 (dic)     0.70694
+    56158678 (v2)         XGBoost 04, random search     0.7468 (X_test)  0.70450
+    56158933 (v2 cat)     CatBoost 04, random search    0.7333 (X_test)  0.70379
+  Los tres quedan en una banda de 0.003. El orden en Kaggle es el inverso al de X_test:
+  cuanto más se ajustó el modelo a la partición aleatoria, peor generalizó a enero.
+
+======================================================================
+ETAPA 7. REGRESIÓN LOGÍSTICA Y SVM (2026-09-10)
+======================================================================
+Notebook: notebooks/05_logistica_svm.ipynb. Misma partición 80/10/10 y semilla que el 04.
+
+7.1 Por qué estos modelos sí llevan pipeline de preparación
+- Los árboles (LightGBM, XGBoost, CatBoost) manejan nulos y categóricas de forma nativa;
+  imputar o escalar no aporta y borra el significado del nulo. La logística y el SVM sí
+  necesitan datos completos, escalados y numéricos.
+- Pipeline (ColumnTransformer, ajustado solo con X_train):
+  numéricas -> imputación por mediana + columna indicadora de nulo por variable (conserva
+  la información "sin historial / sin ficha") + escalado estándar;
+  categóricas -> one-hot con categorías de menos de 500 filas agrupadas y categorías no
+  vistas ignoradas.
+
+7.2 Modelos y búsqueda (criterio: F1 en X_val con el mejor umbral)
+- Regresión logística L2, solver lbfgs, C en {0.01, 0.1, 1, 10}.
+- SVM lineal (LinearSVC, dual=False) con todos los datos, C en {0.01, 0.1, 1}. No da
+  probabilidades: el umbral se busca sobre la distancia al hiperplano.
+- SVM RBF (SVC) SOLO sobre una muestra estratificada de 20,000 filas de X_train, porque
+  su costo crece con el cuadrado de las filas. C en {0.5, 2}, gamma en {scale, 0.01}.
+  Se evalúa en X_val y X_test completos.
+- Comparación en X_test: AUC, F1, precisión, recall, % predicho 1, matrices de confusión
+  y curva precisión-recall. No genera archivo para Kaggle: son modelos de referencia.
+
+7.3 Resultados (ejecución 18:06 a 19:2x, unos 80 minutos, en paralelo con el 04)
+- Pipeline de preparación: 77 variables -> 257 columnas (62 numéricas escaladas + sus
+  indicadores de nulo + one-hot de 15 categóricas). Ajuste 28 s.
+- Regresión logística: F1 en X_val 0.6900 a 0.6905 para C de 0.01 a 10; la
+  regularización no cambia nada, el modelo lineal está saturado. Mejor C = 10.
+  X_test: AUC 0.7467, F1 0.6954, precisión 0.599, recall 0.829, umbral 0.373.
+- SVM lineal (LinearSVC, dual=False): F1 en X_val 0.6900 a 0.6901 para C de 0.01 a 1,
+  idéntico a la logística pero de 5 a 20 veces más lento (243 a 987 s). Mejor C = 1.
+  X_test: AUC 0.7461, F1 0.6949, precisión 0.591, recall 0.842. Umbral sobre la
+  distancia al hiperplano (-0.245).
+- SVM RBF sobre 20,000 filas: F1 en X_val 0.6918 a 0.6960; mejor C = 2, gamma = scale,
+  14,875 vectores soporte (74 % de la muestra: el problema no es separable con margen),
+  219 a 560 s por ajuste. X_test: AUC 0.7503, F1 0.6990, precisión 0.611, recall 0.816.
+- Comparación en X_test:
+                 AUC     F1     precisión  recall  % pred 1
+  Logística      0.7467  0.6954   0.5989   0.8290   0.6644
+  SVM lineal     0.7461  0.6949   0.5914   0.8424   0.6838
+  SVM RBF (20k)  0.7503  0.6990   0.6111   0.8164   0.6412
+  XGBoost (04)   0.8239  0.7468   0.6617   0.8569   0.6215
+  CatBoost (04)  0.8041  0.7333   0.6513   0.8391   0.6184
+- Conclusión: los tres modelos lineales o de kernel quedan en F1 0.695 a 0.699, cinco
+  puntos por debajo de XGBoost y casi cuatro por debajo de CatBoost, sobre la misma
+  partición. El RBF con solo 20k filas iguala a la logística con 455k, lo que indica que
+  hay algo de no linealidad, pero los árboles la capturan mucho mejor y más rápido. La
+  logística queda como modelo de referencia interpretable; el SVM se descarta por costo.
+- Registro en MLflow: grupos 05_logistica (4 búsquedas + final), 05_svm_lineal (3 + final)
+  y 05_svm_rbf (4 + final), con figuras de matrices de confusión y precisión-recall
+  adjuntas, tag registro=posterior_desde_tablas.
+
+======================================================================
+ETAPA 8. INGENIERÍA DE VARIABLES Y OPTUNA (2026-09-10 / 11)
+======================================================================
+Notebook: notebooks/06_feature_engineering.ipynb. Objetivo: subir el F1 de XGBoost (0.747 en
+X_test del 04) con información nueva, no con poda. Diagnóstico previo: el techo viene de
+que el 49 % de los ceros son "no sabemos si se ofreció", de que las variables son de t-1 y
+de que la mitad del test no tiene historial; expectativa realista 0.76 a 0.78.
+
+8.1 Variables nuevas (prefijo fe_, todas con corte en t-1), seis bloques:
+  A. Tendencia y ritmo de pago (pagos): pendiente 6m del % de pago y del pago total,
+     racha actual y máxima de meses sin pago en 12m, meses desde último pago completo y
+     desde último rediferido, cambio de cuota t-1 vs t-6.
+  B. Trayectoria de scores (probabilidades): pendiente 6m de propensión, alerta y
+     autocura; alerta > 0.5 en últimos 3m; cambio de lote t-3 a t-1.
+  C. Contexto del cliente (pagos): peso de la cuota de la obligación en la cuota total
+     del cliente, proporción de obligaciones sin pago, cliente con rediferido en 12m.
+  D. Tasas históricas de aceptación por producto, aplicativo y segmento (trtest, solo
+     meses < t, mínimo 50 filas); segmento normalizado a mayúsculas porque pagos y trtest
+     lo escriben distinto. No existen para agosto.
+  E. Historial del cliente (trtest): meses desde última aceptación y desde última
+     aplicación en cualquier obligación; bandera "en espera" (aplicación hace <= 3 meses,
+     regla de negocio que impide otra opción).
+  F. Interacciones: propensión x impago reciente; mora rezagada x opciones preaprobadas.
+  Total ~24 variables. Dataset ampliado en data/processed/train_fe.parquet y
+  test_fe.parquet; lista en features_fe.csv (77 + nuevas).
+
+8.2 Búsqueda de hiperparámetros con Optuna (TPE, semilla 42)
+- Por qué: la búsqueda aleatoria del 04 prueba combinaciones a ciegas; Optuna elige cada
+  prueba nueva según los resultados anteriores y explora mejor con el mismo presupuesto.
+- XGBoost: 10 pruebas; max_depth 5-10, lr 0.02-0.1, min_child_weight 1-50, subsample
+  0.6-1, colsample 0.5-1, reg_lambda 0.5-10, gamma 0-2; hasta 2,500 árboles con parada
+  temprana (80) sobre X_val (en el 04 ningún modelo activó la parada a 1,500).
+- CatBoost: 5 pruebas; depth 5-8, lr 0.05-0.15, l2 1-10, random_strength 0.5-3,
+  bagging_temperature 0-1; hasta 1,200 iteraciones con parada temprana (60).
+- Objetivo: F1 en X_val con el mejor umbral. Misma partición 80/10/10 del 04.
+
+8.3 Análisis del aporte de variables: con los mejores hiperparámetros, tres conjuntos:
+  77 solas, 77 + nuevas, 133 + nuevas. Importancia por ganancia de las nuevas.
+
+8.4 Validación temporal del ganador (train 08-11, medir en diciembre) para comparar con el
+  baseline (0.6931) antes de subir a Kaggle. Archivos: submission_v3.csv,
+  resultado_prueba_v3.csv, models/xgb_v3.json o catboost_v3.cbm.
+
+8.5 MLflow: grupos 06_xgboost_fe (10 búsquedas + 2 runs de ablación), 06_xgboost_fe_final
+  (final con métricas en X_test y diciembre, figuras, modelo, submission) y 06_catboost_fe
+  (5 búsquedas + final). Registro directo desde el notebook.
+
+8.6 Resultados (ejecución 23:44 a 02:35, unas 3 horas por compartir CPU con otros procesos)
+- 23 variables nuevas; dataset de modelado de 100 variables (15 categóricas).
+- XGBoost con Optuna (10 pruebas): F1 en X_val de 0.7327 a 0.7537. Mejor: max_depth 9,
+  lr 0.033, min_child_weight 1, subsample 0.87, colsample 0.72, reg_lambda 0.72,
+  gamma 0.99, 2,500 árboles (tope; 8 de 10 pruebas llegaron al tope otra vez).
+  En X_test: AUC 0.8383, F1 0.7572, precisión 0.681, recall 0.852, umbral 0.37.
+- Aporte de las variables (mismos hiperparámetros, X_test):
+    77 solas        F1 0.7553  AUC 0.8365
+    77 + nuevas     F1 0.7572  AUC 0.8383
+    133 + nuevas    F1 0.7579  AUC 0.8399
+  Las nuevas suman +0.002 de F1 en la partición aleatoria; concentran el 22.4 % de la
+  ganancia del modelo y 5 de ellas entran en el top 25. Las 133 aportan +0.0007 sobre las
+  77: la poda del EDA no costó nada relevante.
+- CatBoost con Optuna (5 pruebas): mejor F1_val 0.7356 (depth 6, lr 0.14, l2 5.4);
+  X_test AUC 0.8116, F1 0.7375. Sigue 2 puntos por debajo de XGBoost.
+- Validación temporal del ganador (XGBoost, entrenado 08-11, medido en diciembre):
+  AUC 0.7649, F1 0.6964, umbral 0.35. Baseline: AUC 0.7589, F1 0.6931. Mejora pequeña
+  pero en la dirección correcta (+0.0033 F1, +0.006 AUC), y esta vez con la validación
+  que sí predice Kaggle.
+- Archivos: outputs/submission_v3.csv (56.0 % de unos en oot, prob media 0.445),
+  outputs/resultado_prueba_v3.csv, models/xgb_v3.json. NO se ha subido a Kaggle: queda
+  1 envío hoy y se decidirá mañana entre v3 y el resultado del 07.
+- MLflow: grupos 06_xgboost_fe (10 búsquedas + 2 ablaciones + final, con métricas de
+  diciembre, figuras, modelo y submission) y 06_catboost_fe (5 búsquedas + final).
+- Lectura general: en la partición aleatoria el F1 subió de 0.747 a 0.757 (más árboles,
+  Optuna, variables nuevas), pero en diciembre solo de 0.693 a 0.696. La brecha entre las
+  dos validaciones (0.06) es la memorización de obligaciones repetidas entre meses; el
+  notebook 07 ataca exactamente eso.
+
+======================================================================
+ETAPA 9. SELECCIÓN CON VALIDACIÓN TEMPORAL (2026-09-11)
+======================================================================
+Notebook: notebooks/07_validacion_temporal.ipynb. Motivación: el segundo envío (XGBoost
+elegido con partición aleatoria) dio 0.7045 en Kaggle pese a 0.747 en X_test; el baseline,
+elegido en diciembre, dio 0.707. Conclusión: seleccionar todo con validación temporal.
+
+9.1 Diseño
+- Datos: las 100 variables del 06 (77 + 23 nuevas).
+- Criterio de selección: tres cortes temporales (entrenar con meses previos, medir en
+  octubre, noviembre y diciembre) y promedio del F1 con el mejor umbral de cada corte.
+  Diciembre fija el umbral final.
+- Validación adversaria: LightGBM que distingue filas de diciembre (train) de enero
+  (test). AUC cercano a 0.5 = distribuciones iguales. Las variables con más del 5 % de la
+  separación se marcan sospechosas y se prueba excluirlas con un LightGBM de referencia;
+  se conserva el conjunto con mejor F1 temporal.
+- LightGBM con Optuna temporal (12 pruebas): espacio regularizado (num_leaves 15-127,
+  min_child_samples 50-1000, colsample 0.4-1, reg_lambda 0.5-20, reg_alpha 0-5).
+- XGBoost con Optuna temporal (8 pruebas): max_depth 3-7, min_child_weight 20-500, para
+  evitar la memorización de obligaciones que se vio con profundidad 8.
+- Peso por recencia (agosto 0.4 -> noviembre 1.0): se adopta solo si mejora el F1 temporal.
+- Ensamble en diciembre: LightGBM, XGBoost, CatBoost (hiperparámetros del 04) y promedios
+  LGB+XGB y de los tres. Se elige el de mayor F1 en diciembre.
+- Umbral por subpoblación (con / sin historial en trtest), adoptado solo si supera al
+  umbral global en más de 0.001.
+- Final: reentreno con los 5 meses, submission_v4.csv y resultado_prueba_v4.csv.
+- MLflow: grupos 07_lgbm_temporal (12 búsquedas + final), 07_xgb_temporal (8 + final) y
+  07_ensamble_final (final con f1_dic, umbrales, figuras y submission). Las búsquedas
+  registran f1_val (promedio), f1_oct, f1_nov, f1_dic.
+- Ejecución: script que corre primero una prueba rápida del notebook; si pasa, borra sus
+  rastros y lanza la ejecución completa. Registro en outputs/log_nb07.txt. Corre en paralelo
+  con el notebook 06 y con el reentreno de CatBoost v2, con 6 hilos cada uno.
+
+9.2 Ejecución nocturna (00:26 a ~03:00) y reanudación
+- La consola que lanzaba el notebook falló hacia las 03:00 (error de bash al crear procesos
+  en Windows); el notebook quedó sin salidas guardadas, pero MLflow conservó todo lo
+  registrado hasta ese momento.
+- LightGBM temporal, 12 pruebas completas: F1 promedio de 0.7027 a 0.7042; mejor
+  (busqueda_07): lr 0.021, num_leaves 105, min_child_samples 108, colsample 0.59,
+  subsample 0.87, reg_lambda 3.4, reg_alpha 2.7 -> F1 prom 0.7042, oct 0.7059,
+  nov 0.7096, dic 0.6972. Final registrado.
+- XGBoost temporal, 6 de 8 pruebas: F1 promedio de 0.7010 a 0.7033; mejor (busqueda_05):
+  max_depth 7, lr 0.033, min_child_weight 27, colsample 0.66, subsample 0.87,
+  reg_lambda 0.78, gamma 1.49 -> F1 prom 0.7033, dic 0.6945.
+- Lectura: con validación temporal el rango de todas las pruebas es estrechísimo
+  (0.701 a 0.704); los hiperparámetros mueven muy poco. LightGBM regularizado queda
+  ligeramente arriba de XGBoost. Diciembre es el corte más difícil (0.692 a 0.697) y
+  noviembre el más fácil (0.709 a 0.713).
+- Reanudación (2026-09-11 07:50): el notebook se modificó para reutilizar las búsquedas
+  registradas en MLflow cuando existen (tag reanudado=True en los grupos), y se relanzó
+  directamente con nbconvert para completar validación adversaria, recencia, ensamble,
+  umbral por subpoblación, modelo final y submission_v4.
+
+9.3 Resultados finales (reanudación 07:55 a 08:15)
+- Validación adversaria diciembre vs enero: AUC 1.000. Cuatro variables funcionan como
+  reloj y separan los meses por sí solas: pag_meses_historial (crece con el calendario:
+  máximo 11 en diciembre, 12 en enero) y las tres tasas históricas por grupo (en enero se
+  calculan con cinco meses, en diciembre con cuatro; son constantes por grupo y mes).
+  Quitarlas no cambia el F1 temporal (0.7024 con las 100 vs 0.7023 con 96): los modelos
+  no se apoyan en ellas para separar meses. Se conservaron las 100. Para el documento:
+  son variables sin fuga de etiqueta pero con deriva temporal por construcción;
+  en producción convendría acotar pag_meses_historial a 12 y fijar la ventana de las tasas.
+- Peso por recencia (agosto 0.4 -> noviembre 1.0): F1 prom 0.7041 vs 0.7042 sin pesos;
+  no se adopta.
+- Diciembre (entrenado hasta noviembre), todos con umbral óptimo:
+                       umbral  AUC     F1      precisión  recall  % pred 1
+  LightGBM temporal    0.33   0.7659  0.6972   0.5963    0.8393   0.659
+  XGBoost temporal     0.34   0.7640  0.6964   0.5956    0.8384   0.659
+  CatBoost (params 04) 0.33   0.7603  0.6930   0.5891    0.8415   0.669
+  Ensamble LGB+XGB     0.33   0.7656  0.6969   0.5929    0.8451   0.667
+  Ensamble 3           0.35   0.7654  0.6968   0.6040    0.8232   0.638
+  Baseline (nb 03)     0.35   0.7589  0.6931   0.5980    0.8242   0.645
+  El ensamble no supera al mejor individual: los tres modelos se equivocan en las mismas
+  filas (ruido de etiqueta, no varianza de modelo).
+- Umbral por subpoblación (con historial 0.33 / sin historial 0.37): F1 0.6974 vs 0.6972
+  global; no se adopta (diferencia < 0.001).
+- Ganador: LightGBM temporal, umbral 0.33, 420 árboles; reentrenado con los 5 meses.
+  oot: 64.4 % de unos, probabilidad media 0.453. Archivos: outputs/submission_v4.csv,
+  resultado_prueba_v4.csv, models/lgbm_v4.txt.
+- MLflow: 07_lgbm_temporal (nocturno, 12 búsquedas + final) y 07_lgbm_temporal
+  (reanudado, tag reanudado=True, solo final); igual para 07_xgb_temporal (6 búsquedas
+  nocturnas + final reanudado); 07_ensamble_final con f1_dic, umbrales, figuras y
+  submission_v4.
+
+9.5 Cuarto envío a Kaggle (2026-09-11 13:12 UTC, submission 56165986): LightGBM temporal v4
+- F1 público 0.71421. MEJOR RESULTADO HASTA AHORA (+0.0073 sobre el baseline 0.70694).
+- Tabla de envíos:
+    submission        modelo                              F1 dic    F1 Kaggle
+    56152634 (v1)     LightGBM baseline                   0.6931    0.70694
+    56158678 (v2)     XGBoost 04, partición aleatoria     -         0.70450
+    56158933 (v2cat)  CatBoost 04, partición aleatoria    -         0.70379
+    56165986 (v4)     LightGBM temporal, 100 vars, Optuna 0.6972    0.71421
+  La mejora en diciembre (+0.004) se tradujo en Kaggle (+0.007): la validación temporal
+  vuelve a predecir la dirección. Sin envíos restantes hoy.
+- Registrado en MLflow (07_ensamble_final y 07_lgbm_temporal).
+
+9.4 Diagnóstico de sobreajuste (entrenar hasta noviembre, medir en train y en diciembre)
+                                        AUC train  AUC dic  F1 train  F1 dic  brecha F1
+  LightGBM baseline (63 hojas, 600)     0.840      0.761    0.758     0.693   0.065
+  XGBoost 04 (prof 8, 1500, mcw 1)      0.904      0.765    0.800     0.697   0.103
+  LightGBM muy simple (15 hojas, 150)   0.774      0.742    0.714     0.683   0.031
+  Lectura: más capacidad sube el train y no sube diciembre; menos capacidad baja ambos.
+  Es la firma de ruido en la etiqueta (49 % de los ceros son "no sabemos si se ofreció"),
+  no de falta de modelo. Los hiperparámetros ya no mueven el resultado (las 18 pruebas
+  nocturnas quedaron entre 0.701 y 0.704). Vía de mejora: cambiar lo que se modela
+  (modelo en dos etapas: se gestionó / aceptó dado que se gestionó) y usar el tipo de
+  respuesta rezagado como variable.
+
+======================================================================
+ETAPA 10. IMPORTANCIA DE VARIABLES Y REENTRENO CON LAS MÁS IMPORTANTES (2026-09-11)
+======================================================================
+Notebook: notebooks/08_importancia_variables.ipynb. Pedido por el usuario para ver si un
+subconjunto de variables sube el F1. Expectativa declarada: F1 igual con menos variables.
+
+10.1 Diseño
+- Modelo de referencia: LightGBM ganador del 07 (hiperparámetros de busqueda_07),
+  entrenado hasta noviembre y medido en diciembre.
+- Importancia por ganancia (del modelo) y por permutación en diciembre (caída de F1 al
+  barajar cada variable, 3 repeticiones, umbral de referencia fijo). Se comparan ambas.
+- Reentreno con las 20, 30, 40, 50, 60 y 80 variables más importantes según permutación,
+  con la validación temporal de 3 cortes. Cada tamaño es un run de búsqueda en MLflow
+  (grupo 08_importancia), con f1_val (promedio), f1_oct, f1_nov, f1_dic.
+- Regla de elección: el menor número de variables cuyo F1 promedio quede a menos de
+  0.001 del mejor. Se reentrena con los 5 meses y se escribe submission_v5.csv,
+  resultado_prueba_v5.csv, models/lgbm_v5.txt y data/processed/features_v5.csv.
+
+10.2 Resultados (08:20 a 09:10)
+- Referencia: LightGBM del 07, hasta noviembre -> diciembre: F1 0.6972, AUC 0.7659,
+  umbral 0.33, 1,093 árboles.
+- Permutación (3 repeticiones, 19 min): 21 de 100 variables con caída de F1 <= 0:
+  pag_n_rediferido_3m, lag_n_meses_vistos, cli_estado_civil, pagcli_n_rediferido_t1,
+  pag_n_cancelado_12m, cli_genero_cli, fe_en_espera, cli_num_hijos, lagcli_n_aceptos,
+  fe_lote_cambio_3m, cli_personas_dependientes, fe_alerta_sobre_05_3m, cli_cli_actualizado,
+  cli_declarante, lag_cant_alter_posibles_ult, pagcli_n_no_pago_t1, pag_n_pago_mas_1m,
+  cli_t_corte, cli_ocup, cli_antiguedad_meses, pagcli_n_oblig_t1.
+  Ganancia y permutación coinciden en 17 de las 30 primeras.
+- Las 5 más importantes por permutación: pag_marca_pago_t1 (caída 0.0119),
+  fe_meses_desde_acepto_cli (0.0071), pagcli_cuota_total_t1 (0.0059),
+  fe_meses_desde_pago_completo (0.0038), prob_prob_propension_t1 (0.0038). Tres de las
+  cinco son variables nuevas del 06.
+- Curva F1 temporal según número de variables (orden por permutación):
+    n_vars  F1_prom  F1_dic
+      20    0.6971   0.6915
+      30    0.7017   0.6961
+      40    0.7025   0.6969
+      50    0.7039   0.6980
+      60    0.7041   0.6983
+      80    0.7051   0.6999   <- mejor
+     100    0.7042   0.6972
+  Quitar las ~20 variables sin aporte mejora ligeramente: con 80 variables el F1 en
+  diciembre sube de 0.6972 a 0.6999.
+- La regla de parsimonia (menor n a menos de 0.001 del mejor) eligió 60 variables
+  (F1 prom 0.7041, dic 0.6983, umbral 0.35). Reentrenado con 5 meses ->
+  outputs/submission_v5.csv (61.3 % de unos), resultado_prueba_v5.csv, models/lgbm_v5.txt,
+  data/processed/features_v5.csv. Registrado en MLflow (08_importancia: 7 búsquedas +
+  final). Para Kaggle, el conjunto de 80 tiene mejor cifra en diciembre; pendiente decidir.
+
+======================================================================
+ETAPA 11. DIAGNÓSTICO DE FALSOS POSITIVOS Y MODELO MULTICLASE (2026-09-11)
+======================================================================
+11.1 Diagnóstico en diciembre (LightGBM del 07 entrenado hasta noviembre, umbral 0.33)
+- F1 0.6940, precisión 0.589, recall 0.844. 67,466 predichos como 1; 27,721 falsos
+  positivos; 7,324 falsos negativos.
+- El 91 % de los falsos positivos (25,349) son ceros del tipo e_cero_tipo_2 ("no sabemos
+  si se le ofreció"); el modelo marca como 1 al 50 % de esos ceros. El 9 % restante son
+  d_cero_tipo_1 (ofrecido y no acepta), donde marca al 75 %.
+- Esos falsos positivos SÍ fueron gestionados: 100 % con contacto efectivo (rpc). Su marca
+  de gestión en el mes: 48 % "Cliente compromiso de pago", 44 % "No acepta acuerdo",
+  5 % "No acepta alternativa". Es decir, el banco les gestionó un ACUERDO de pago (mora
+  temprana), no una OPCIÓN de pago. La decisión de ruta la toma el proceso de cobranza,
+  no el cliente, y con variables de t-1 el modelo no la ve.
+- El modelo está calibrado (tramo 0.33-0.40: 37 % de unos reales; 0.8-1.0: 88 %). Subir
+  el umbral a 0.50 lleva la precisión de 0.59 a 0.69 pero el F1 baja de 0.694 a 0.655:
+  el umbral no es la solución para F1.
+- Con historial en trtest: precisión 0.612, recall 0.784, F1 0.687 (n 47,646). Sin
+  historial: precisión 0.574, recall 0.894, F1 0.699 (n 52,884).
+
+11.2 Diseño del notebook 09 (aprobado por el usuario)
+- Etiqueta multiclase: tipo_var_rpta_alt de trtest (a, b, c = 1; d, e = 0). LightGBM
+  objetivo multiclass con 5 clases; P(1) = P(a) + P(b) + P(c); umbral en diciembre; el
+  archivo de Kaggle sigue siendo 0/1.
+- Variables de ruta (prefijo ruta_, solo meses < t): por obligación, número de veces en
+  compromiso de pago, no acepta acuerdo, acepta alternativa, e_cero y d_cero, y último
+  tipo de respuesta; por cliente, las cuatro primeras. 10 variables.
+- Cuatro variantes con los hiperparámetros del 07 y validación temporal de 3 cortes:
+  binario 100 (referencia), binario 100+ruta, multiclase 100, multiclase 100+ruta.
+  Cada variante es un run de búsqueda en MLflow (grupo 09_multiclase_ruta) con f1_val
+  (promedio), f1_dic, auc_dic, precision_dic, recall_dic.
+- La mejor por F1 promedio se reentrena con los 5 meses -> submission_v6.csv,
+  resultado_prueba_v6.csv, models/lgbm_v6.txt, features_v6.csv, ruta_features.parquet.
+
+11.3 Aclaraciones sobre la etiqueta y el multiclase (conversación 2026-09-11)
+- De dónde salen las etiquetas multiclase: de la columna tipo_var_rpta_alt del archivo
+  de train (trtest), presente en las 568,251 filas. Hasta el 08 se excluía de las
+  variables por describir el resultado del mismo mes; en el 09 pasa a ser la etiqueta
+  (con cinco valores). Para enero no existe, igual que var_rpta_alt.
+- Mapa clase -> etiqueta binaria (definido por el banco, no por nosotros; se cumple sin
+  excepciones en el train y el nombre de cada clase lo lleva escrito):
+    a_uno_tipo_1  acepta y se le aplica            -> 1  (178,548 filas, 31 %)
+    b_uno_tipo_2  acepta pero no se le aplica      -> 1  ( 74,702 filas, 13 %)
+    c_uno_tipo_3  se interesa pero no acepta       -> 1  ( 19,518 filas,  3 %)
+    d_cero_tipo_1 se le ofrece y rechaza           -> 0  ( 17,283 filas,  3 %)
+    e_cero_tipo_2 sin registro de oferta           -> 0  (278,200 filas, 49 %)
+- Observación para el documento técnico: la clase c ("interesado más no acepta") cuenta
+  como 1 en la definición del banco. Lectura probable: la variable mide propensión para
+  priorizar gestión, y un cliente interesado es un "sí débil" que vale la pena seguir
+  gestionando, a diferencia del rechazo explícito (d). El modelo respeta la definición
+  porque Kaggle califica contra ella; tratarla como 0 perdería el 3 % de los positivos.
+- La clase e ("no sabemos si se le ofreció", 49 % del train) NO dice si el cliente
+  habría aceptado: es 0 por definición, porque no hubo oferta que aceptar o no quedó
+  registro. En diciembre, casi todas fueron gestionadas por la ruta de acuerdos de pago
+  (compromiso de pago / no acepta acuerdo). Esta ambigüedad es el techo del F1 y no se
+  puede corregir para Kaggle; para el negocio, registrar explícitamente a quién se le
+  ofreció una opción mejoraría el modelo más que cualquier técnica.
+- Cómo trata el multiclase esos casos: e es una clase más con nombre propio. El modelo
+  aprende su perfil por separado (típicamente mora temprana con historial de compromisos
+  de pago) en lugar de mezclarlo con el rechazo real (d) en un "cero" borroso. No adivina
+  si habría aceptado; aprende a reconocer a quién no le van a ofrecer y a no confundirlo
+  con quien sí acepta. Eso es lo que puede bajar los falsos positivos.
+- El objetivo del ejercicio no cambia: Y sigue siendo 1 si acepta y 0 si no, como pide el
+  enunciado. El multiclase solo cambia cómo se calcula la probabilidad de 1:
+  P(1) = P(a) + P(b) + P(c); P(0) = P(d) + P(e); luego umbral en diciembre y sale 0/1.
+  El archivo de Kaggle y el resultado_prueba.csv (con Prob_uno) son idénticos en formato.
+  Frase para el jurado: "la etiqueta 0 mezcla rechazo y ausencia de oferta; el modelo las
+  aprende por separado para no confundir la segunda con una aceptación, y luego colapsa a
+  la definición binaria del enunciado".
+- Variante conservadora incluida en el 09: binario con las variables de ruta, por si se
+  prefiere no cambiar la formulación de la etiqueta.
+
+11.4 Resultados (08:52 a 09:35)
+- Señal de las variables de ruta (diciembre, tasa de aceptación según el último tipo de
+  respuesta de la obligación): b (aceptó sin aplicar) 0.852, c 0.593, a 0.438, d 0.399,
+  e (sin oferta) 0.337. Es fuerte, pero el modelo ya la capturaba en gran parte con
+  lag_var_rpta_alt_ult.
+- Cuatro variantes, hiperparámetros del 07, validación temporal de 3 cortes:
+    variante             n_vars  F1_prom  F1_dic  AUC_dic  precisión_dic  recall_dic  umbral
+    binario 100            100   0.7042   0.6972  0.7659   0.5963         0.8393      0.33
+    binario 100+ruta       110   0.7048   0.6967  0.7659   0.6068         0.8178      0.35
+    multiclase 100         100   0.7028   0.6957  0.7643   0.6008         0.8263      0.34
+    multiclase 100+ruta    110   0.7031   0.6968  0.7648   0.6004         0.8301      0.34
+- Conclusiones:
+  * El MULTICLASE NO MEJORA: F1 en diciembre 0.6957-0.6968 frente a 0.6972 del binario.
+    Separar las cinco rutas no le da al modelo información nueva; con variables de t-1 la
+    clase e ("sin oferta") no es más predecible que el cero mezclado. La hipótesis se
+    prueba y se descarta; queda documentada.
+  * Las variables de RUTA suben la precisión de 0.596 a 0.607 (menos falsos positivos)
+    a costa de recall (0.839 -> 0.818); el F1 queda igual (0.6967 vs 0.6972 en diciembre,
+    0.7048 vs 0.7042 en promedio). Son útiles si el negocio prefiere precisión; para
+    Kaggle no cambian nada.
+- El notebook eligió "binario 100+ruta" por F1 promedio (0.7048, el mayor de todo el
+  proyecto) y generó submission_v6.csv (61.6 % de unos), resultado_prueba_v6.csv,
+  models/lgbm_v6.txt, features_v6.csv y data/processed/ruta_features.parquet. En
+  diciembre (0.6967) queda por debajo del 08 con 80 variables (0.6999).
+- MLflow: grupo 09_multiclase_ruta con 4 búsquedas (una por variante) y final.
+- Estado de candidatos para el envío de las 19:00 (F1 en diciembre):
+    08, 80 variables por permutación   0.6999  (archivo aún no generado)
+    08, 60 variables (submission_v5)   0.6983
+    07, 100 variables (v4, ya enviado) 0.6972  -> Kaggle 0.71421
+    09, binario 100+ruta (v6)          0.6967
+
+======================================================================
+ETAPA 12. MLOPS (2026-09-11)
+======================================================================
+Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usuario:
+- Modelo en Cloud Storage (versionado por carpeta) + registro en MLflow; nunca dentro de la
+  imagen Docker. Vertex AI Model Registry queda como evolución documentada.
+- API FastAPI (/health, /version, /predict) con Pydantic; recibe variables ya calculadas.
+- Pruebas unitarias con pytest en cuatro archivos (variables con prueba de no fuga
+  temporal, inferencia, API, monitoreo); cobertura mínima 80 %; bloquean el pipeline.
+- Docker + Cloud Run con service.yaml (1-10 instancias, concurrencia 80, 2 CPU/2 GB).
+- Seguridad: servicio no público con token de identidad de Google, clave de API en Secret
+  Manager, cuenta de servicio de permisos mínimos; .env en local.
+- CI/CD en GitHub con ramas dev/stage/main; una imagen por commit; stage con prueba de
+  humo; main con aprobación manual y tráfico gradual; Workload Identity Federation.
+- Monitoreo con PSI (0.1 aviso, 0.25 alarma) por variable y por predicción, F1 real al
+  llegar la etiqueta, regla de reentreno; run mensual en MLflow; en GCP job programado.
+  Se prefirió PSI sobre la divergencia de Kullback-Leibler por ser simétrico, con
+  umbrales conocidos en banca y sin infinitos en tramos vacíos.
+- Requiere: repositorio GitHub con las tres ramas (el usuario lo crea) y confirmar
+  proyecto de GCP con facturación.
+
+12.1 Implementado (2026-09-11, tarde)
+- Repositorio: github.com/joseandrescarvajal1/propension-opciones-pago, ramas dev, stage,
+  main creadas por el usuario. Carpeta local conectada; trabajo en dev.
+- Paquete de modelo models/v4/: modelo.txt (LightGBM v4, el mejor en Kaggle, 0.71421) y
+  modelo_info.json (versión, umbral 0.33, 100 variables, 15 categóricas con sus niveles,
+  métricas de diciembre y de Kaggle, procedencia). El paquete NO se versiona; irá a
+  Cloud Storage.
+- src/inferencia.py: clase Modelo con cargar (local o gs://), validar (rechaza columnas
+  faltantes o sobrantes y entradas vacías), preparar (ordena columnas, fija categóricas
+  con los niveles del entrenamiento, convierte numéricas) y predecir (prob_uno + 0/1).
+- api/main.py (FastAPI): /health sin autenticación; /version y /predict con cabecera
+  X-API-Key comparada en tiempo constante con la variable API_KEY (503 si no está
+  configurada, 401 si falta o es incorrecta); Pydantic valida el cuerpo (422); límite de
+  filas por petición (413); umbral opcional; cabeceras de seguridad; modelo cargado una
+  vez al arrancar (lifespan).
+- src/monitoreo.py: PSI para numéricas (tramos por cuantiles de la referencia, nulos como
+  tramo extra, epsilon contra infinitos) y categóricas; reporte por variable con estado
+  (estable < 0.10, aviso, alarma > 0.25); deriva de la predicción (PSI de probabilidades y
+  % de unos); desempeño real al llegar la etiqueta; regla de reentreno (F1 bajo umbral N
+  meses seguidos).
+- tests/: 31 pruebas con pytest, datos sintéticos generados desde la lista de variables
+  del modelo (sin tocar data/). Cobertura 95 % sobre inferencia, API y monitoreo
+  (los scripts de descarga, MLflow y CatBoost quedan fuera de la medición). Todas pasan.
+  tests/crear_modelo_minimo.py genera un paquete sintético para CI sin credenciales.
+- deploy/Dockerfile (python 3.12 slim, libgomp, usuario sin privilegios, healthcheck,
+  uvicorn con 2 workers; el modelo no va dentro), .dockerignore (solo api/ y
+  src/inferencia.py entran al contexto), deploy/service.yaml (Cloud Run: ingress
+  interno, 0/1 a 10 instancias, concurrencia 80, 2 CPU/2 GB, timeout 60 s, cuenta de
+  servicio propia, API_KEY desde Secret Manager, probes), deploy/cloudbuild.yaml
+  (build, push a Artifact Registry con etiqueta = hash, render del service.yaml, deploy).
+- .github/workflows/ci.yml (push y PR a dev/stage/main: ruff, paquete de modelo real o
+  mínimo, pytest con cobertura mínima 80 %, docker build) y deploy.yml (tras CI exitoso:
+  entorno por rama, Workload Identity Federation, Cloud Build, prueba de humo en stage y
+  prod, tráfico 10 % en prod; environment "prod" con aprobación manual).
+- pyproject.toml (ruff, pytest, cobertura), README.md del repositorio, .env y
+  .env.example con API_KEY y MODELO_RUTA.
+- Pendiente: construir y probar la imagen (Docker Desktop apagado en el momento),
+  src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
+  demostración de monitoreo diciembre vs enero registrada en MLflow, configuración de
+  GCP (proyecto, bucket, Secret Manager, WIF) y documento de arquitectura.
+
+======================================================================
+PENDIENTE / PRÓXIMOS PASOS
+======================================================================
+- Mejor en Kaggle hasta ahora: LightGBM temporal v4, 0.71421. Sin envíos hasta las
+  19:00 (reinicio a medianoche UTC).
+- En curso: notebook 08 (importancia y subconjuntos) y notebook 09 (multiclase + ruta).
+  Con los resultados de ambos en diciembre se decide qué subir a las 19:00.
+- Plan de mejoras acordado: importancia por ganancia + permutación en X_val, poda y
+  reentrenamiento; luego SHAP (explicabilidad, insumo del agente). RL (Q-learning) no va en
+  la Parte 1; se evaluará como módulo experimental del agente sobre un simulador. Pendientes que se mencionaron: comparar 133 vs 77
+  variables, permutación en validación, regresión logística como referencia, tratamiento
+  de categóricas en la selección. SHAP se deja para la parte del agente.
+- Parte MLOps: pipeline reproducible, versionado de datos y modelo, monitoreo de deriva.
+- Parte 2: sistema agéntico (50 % de la nota).
+- Documento técnico (4.000 caracteres), arquitectura, declaración de uso de IA generativa.
+
+======================================================================
+DECLARACIÓN DE USO DE IA GENERATIVA (en construcción)
+======================================================================
+- Claude Code (Anthropic) se usó para: lectura de la competencia vía API de Kaggle,
+  script de descarga, redacción y ejecución de los notebooks (EDA, construcción del
+  dataset, modelo baseline, XGBoost/CatBoost), gráficos, documentación (docs/), envío del
+  primer submission por API con el token del candidato, y esta bitácora.
+- Decisiones tomadas por el candidato: estructura del proyecto en notebooks explicativos
+  y concisos; regla de corte temporal en t-1 y exclusión de variables del mismo mes por
+  fuga; conservación de nulos; criterios de selección de variables (eliminar por criterio,
+  varianza baja, correlación de Spearman) y rechazo del AUC univariado como medida;
+  partición 80/10/10; modelos a comparar (LightGBM base, XGBoost, CatBoost); métricas de
+  comparación (matriz de confusión, F1, precisión, recall, curva precisión-recall);
+  búsqueda de hiperparámetros con el conjunto de validación; dejar SHAP para la parte
+  del agente.
