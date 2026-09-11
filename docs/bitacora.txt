@@ -957,6 +957,49 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   prod, tráfico 10 % en prod; environment "prod" con aprobación manual).
 - pyproject.toml (ruff, pytest, cobertura), README.md del repositorio, .env y
   .env.example con API_KEY y MODELO_RUTA.
+12.2 Infraestructura en GCP (2026-09-11, tarde)
+- Herramientas: Google Cloud SDK 584 instalado con winget en el equipo del usuario;
+  autenticación con la cuenta del usuario (gcloud auth login --update-adc). Claude Code
+  opera con esa credencial desde la terminal; no hay llaves JSON.
+- Proyecto: propension-opciones-pago (número 691539588098), creado por el usuario en la
+  consola. Facturación asociada desde la terminal a la cuenta abierta del mismo nombre.
+- APIs activadas: Cloud Run, Cloud Build, Artifact Registry, Secret Manager, Cloud
+  Storage, IAM, IAM Credentials, STS, Resource Manager.
+- Bucket gs://propension-opciones-pago-modelos (us-central1, acceso uniforme, sin acceso
+  público) con el paquete del modelo en modelos/v4/ (modelo.txt 12 MB + modelo_info.json).
+- Artifact Registry: repositorio docker "propension" en us-central1.
+- Secret Manager: secreto propension-api-key (versión 1) con la misma clave del .env local.
+- Cuentas de servicio:
+  * propension-api-sa (runtime de Cloud Run): solo storage.objectViewer sobre el bucket y
+    secretmanager.secretAccessor sobre el secreto.
+  * github-deployer (GitHub Actions): run.admin, cloudbuild.builds.editor,
+    artifactregistry.writer, iam.serviceAccountUser, storage.admin,
+    serviceusage.serviceUsageConsumer, viewer.
+  * Cuentas de Cloud Build (cloudbuild y compute por defecto): run.admin,
+    iam.serviceAccountUser, artifactregistry.writer, logging.logWriter,
+    storage.objectViewer.
+- Workload Identity Federation: pool github-pool con proveedor OIDC github-provider
+  (issuer token.actions.githubusercontent.com, mapeo subject/repository/ref, condición
+  repository == 'joseandrescarvajal1/propension-opciones-pago'); binding
+  workloadIdentityUser para ese repositorio sobre github-deployer.
+- Primer despliegue a dev lanzado manualmente con gcloud builds submit (misma receta
+  deploy/cloudbuild.yaml que usará GitHub) para validar la cadena completa.
+- Incidencia: gcloud.cmd en Windows rompe los argumentos con espacios o comillas; se
+  resolvió usando el python empaquetado del SDK (lib/gcloud.py) para el proveedor OIDC.
+12.3 Configuración del repositorio de GitHub (por API, con la credencial local del usuario)
+- Variables de Actions: GCP_PROJECT_ID, GCP_REGION (us-central1), GCP_SA_EMAIL
+  (github-deployer@...), GCP_WIF_PROVIDER (ruta completa del proveedor OIDC).
+- Secreto API_KEY_SMOKE (misma clave del .env, cifrada con la llave pública del repo) para
+  la prueba de humo de stage y prod.
+- Environments: dev y stage sin reglas; prod con revisor obligatorio (el usuario) y solo
+  desplegable desde main.
+- Protección de main: el check "pruebas" del pipeline de CI es obligatorio y la rama debe
+  estar al día.
+- Incidencias del primer despliegue manual: (1) `--ignore-file=.dockerignore` subió solo
+  2 archivos -> se creó .gcloudignore explícito; (2) Cloud Build interpretaba ${ENV} del
+  paso sed como sustitución propia -> los marcadores del service.yaml pasaron a __ENV__,
+  __IMAGE__, etc.; (3) el .dockerignore en modo lista blanca (`*` + `!api/`) dejó api/
+  fuera del contexto en el Docker de Cloud Build -> se cambió a lista de exclusiones.
 - Pendiente: construir y probar la imagen (Docker Desktop apagado en el momento),
   src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
   demostración de monitoreo diciembre vs enero registrada en MLflow, configuración de

@@ -1,6 +1,28 @@
-# Solo entran a la imagen api/ y src/inferencia.py (ver deploy/Dockerfile). Todo lo demás queda fuera del contexto.
-*
-!api/
-!src/inferencia.py
-**/__pycache__/
+# Fuera del contexto de Docker (el Dockerfile solo copia api/ y src/inferencia.py).
+.git
+.github
+.env
+.env.example
+data
+models
+outputs
+mlruns
+mlflow.db
+notebooks
+docs
+tests
+catboost_info
+deploy
+.pytest_cache
+.ruff_cache
+.coverage
+**/__pycache__
 **/*.pyc
+src/download_data.py
+src/tracking.py
+src/mlflow_ui.py
+src/monitoreo.py
+src/catboost_v2_oot.py
+/requirements.txt
+/pyproject.toml
+/README.md

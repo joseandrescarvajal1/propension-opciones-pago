@@ -25,12 +25,7 @@ steps:
     args:
       - -c
       - |
-        sed -e "s|\${ENV}|${_ENV}|g" \
-            -e "s|\${IMAGE}|${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}|g" \
-            -e "s|\${PROJECT_ID}|${PROJECT_ID}|g" \
-            -e "s|\${MODELO_RUTA}|${_MODELO_RUTA}|g" \
-            -e "s|\${MIN_INSTANCES}|${_MIN_INSTANCES}|g" \
-            deploy/service.yaml > /workspace/service.rendered.yaml
+        sed -e "s|__ENV__|${_ENV}|g"             -e "s|__IMAGE__|${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}|g"             -e "s|__PROJECT_ID__|${PROJECT_ID}|g"             -e "s|__MODELO_RUTA__|${_MODELO_RUTA}|g"             -e "s|__MIN_INSTANCES__|${_MIN_INSTANCES}|g"             deploy/service.yaml > /workspace/service.rendered.yaml
 
   - id: deploy
     name: gcr.io/cloud-builders/gcloud

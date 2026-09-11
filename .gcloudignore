@@ -1,0 +1,26 @@
+# Lo que NO se sube a Cloud Build. Solo hacen falta api/, src/inferencia.py y deploy/.
+.git/
+.github/
+.env
+data/
+models/
+outputs/
+mlruns/
+mlflow.db
+notebooks/
+docs/
+tests/
+catboost_info/
+**/__pycache__/
+**/*.pyc
+src/download_data.py
+src/tracking.py
+src/mlflow_ui.py
+src/monitoreo.py
+src/catboost_v2_oot.py
+/requirements.txt
+/pyproject.toml
+/README.md
+.pytest_cache/
+.ruff_cache/
+.coverage
