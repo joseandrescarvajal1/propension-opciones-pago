@@ -17,10 +17,15 @@ ignore = ["E402", "E701", "E702", "E731", "E741"]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
 
+[tool.ruff.lint.per-file-ignores]
+"agente/**" = ["E501"]  # prompts, reglas y consultas largas en una línea
+"tests/agente/**" = ["E501"]
+
 [tool.coverage.run]
 # Cobertura solo sobre el código que corre en producción (API e inferencia) y el monitoreo.
-source = ["src", "api"]
-omit = ["src/download_data.py", "src/mlflow_ui.py", "src/tracking.py", "src/catboost_v2_oot.py", "src/entrenar.py", "src/monitoreo_mensual.py"]  # scripts de orquestación (necesitan datos reales)
+source = ["src", "api", "agente"]
+omit = ["src/download_data.py", "src/mlflow_ui.py", "src/tracking.py", "src/catboost_v2_oot.py", "src/entrenar.py", "src/monitoreo_mensual.py",  # scripts de orquestación (necesitan datos reales)
+        "agente/front/*", "agente/sandbox/crear_sandbox.py", "agente/pruebas/*", "agente/grafo/llm.py"]  # front, generador con datos reales, suite con LLM real
 
 [tool.coverage.report]
 fail_under = 80
