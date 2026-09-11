@@ -1031,8 +1031,19 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   commit. Un push a dev termina en un despliegue sin intervención manual.
 - Estado del flujo por ramas: dev validado; stage y main pendientes de promoción (PR
   dev -> stage; PR stage -> main con aprobación del usuario en el environment prod).
-- Pendiente: construir y probar la imagen (Docker Desktop apagado en el momento),
-  src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
+12.6 Imagen probada en local (Docker Desktop 28.3)
+- deploy/Dockerfile construye propension-api:local (493 MB, python 3.12 slim + LightGBM).
+- Contenedor con el paquete models/v4 montado en /modelo y la clave por variable de
+  entorno: arranca en 3 s; /health ok; /version v4; /predict devuelve las mismas
+  probabilidades que en local y en Cloud Run (0.648261 y 0.435318) en 19 ms; sin clave
+  401; proceso corriendo como usuario "app" sin privilegios.
+- Incidencia: Git Bash convierte /modelo en C:/Program Files/Git/modelo al pasar
+  variables; se resuelve con MSYS_NO_PATHCONV=1 (documentado en el README).
+- Pull request #1 abierto: dev -> stage (https://github.com/joseandrescarvajal1/
+  propension-opciones-pago/pull/1). Al fusionarlo se despliega propension-api-stage con
+  prueba de humo. El PR stage -> main se abre después, porque hasta entonces ambas ramas
+  son idénticas.
+- Pendiente: src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
   demostración de monitoreo diciembre vs enero registrada en MLflow, configuración de
   GCP (proyecto, bucket, Secret Manager, WIF) y documento de arquitectura.
 

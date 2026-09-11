@@ -46,6 +46,8 @@ docker build -f deploy/Dockerfile -t propension-api .
 docker run -p 8080:8080 -e API_KEY=mi-clave -e MODELO_RUTA=/modelo -v $PWD/models/v4:/modelo propension-api
 ```
 
+En Git Bash de Windows, anteponer `MSYS_NO_PATHCONV=1` al `docker run` para que no convierta la ruta `/modelo`.
+
 ## Flujo de ramas y despliegue
 
 | Rama | Pipeline | Cloud Run |
