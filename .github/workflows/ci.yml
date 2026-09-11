@@ -1,12 +1,11 @@
-# Integración continua: corre en cada push y pull request a dev, stage y main.
-# Si las pruebas fallan, no se construye la imagen ni se despliega nada.
+# Integración continua: corre en cada pull request y, vía workflow_call, como primer trabajo de deploy.yml.
+# Si las pruebas fallan, no se despliega nada.
 name: ci
 
 on:
-  push:
-    branches: [dev, stage, main]
   pull_request:
     branches: [dev, stage, main]
+  workflow_call:        # lo invoca deploy.yml antes de desplegar
 
 jobs:
   pruebas:

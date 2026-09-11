@@ -1,4 +1,4 @@
-# Despliegue continuo en GCP según la rama:
+# Despliegue continuo en GCP según la rama (se dispara con el push; primero corre el CI como trabajo previo):
 #   dev   -> propension-api-dev   (min 0 instancias)           automático
 #   stage -> propension-api-stage (min 1) + prueba de humo      automático
 #   main  -> propension-api-prod  (min 1) + aprobación manual   tráfico 10 % y luego 100 %
@@ -8,9 +8,7 @@
 name: deploy
 
 on:
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
+  push:
     branches: [dev, stage, main]
 
 permissions:
@@ -18,17 +16,19 @@ permissions:
   id-token: write
 
 jobs:
+  pruebas:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
   desplegar:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: pruebas
     runs-on: ubuntu-latest
-    environment: ${{ github.event.workflow_run.head_branch == 'main' && 'prod' || github.event.workflow_run.head_branch }}
+    environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name }}
     env:
-      RAMA: ${{ github.event.workflow_run.head_branch }}
-      SHA: ${{ github.event.workflow_run.head_sha }}
+      RAMA: ${{ github.ref_name }}
+      SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.SHA }}
 
       - name: Parámetros por entorno
         id: env

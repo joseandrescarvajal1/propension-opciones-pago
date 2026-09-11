@@ -1000,6 +1000,23 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   paso sed como sustitución propia -> los marcadores del service.yaml pasaron a __ENV__,
   __IMAGE__, etc.; (3) el .dockerignore en modo lista blanca (`*` + `!api/`) dejó api/
   fuera del contexto en el Docker de Cloud Build -> se cambió a lista de exclusiones.
+12.4 Primer despliegue exitoso en Cloud Run (2026-09-11, tarde)
+- Servicio propension-api-dev, revisión 00001, en us-central1:
+  https://propension-api-dev-amdvve4e3q-uc.a.run.app
+- Imagen construida por Cloud Build desde deploy/Dockerfile y publicada en Artifact
+  Registry con la etiqueta del commit; el modelo se lee de
+  gs://propension-opciones-pago-modelos/modelos/v4 al arrancar; la clave viene de Secret
+  Manager; corre con la cuenta propension-api-sa.
+- Seguridad verificada: ingreso "all" pero con autenticación IAM obligatoria (sin token de
+  identidad de Google responde 403 antes de llegar a la aplicación); dentro de la
+  aplicación, sin X-API-Key responde 401. Ingreso interno se descartó porque impide las
+  pruebas de humo desde GitHub; la protección real es IAM (run.invoker) + clave.
+- Prueba funcional: /health ok; /version devuelve v4, umbral 0.33, 100 variables y las
+  métricas; /predict calificó dos obligaciones de enero en 86 ms con las mismas
+  probabilidades que en local (0.648261 y 0.435318).
+- github-deployer recibió además roles/run.invoker para la prueba de humo del pipeline.
+- Correcciones subidas a dev (commit "Despliegue en Cloud Run: correcciones...") para
+  que el pipeline de GitHub repita el despliegue con Workload Identity Federation.
 - Pendiente: construir y probar la imagen (Docker Desktop apagado en el momento),
   src/features.py con las funciones de los notebooks (prueba de no fuga temporal),
   demostración de monitoreo diciembre vs enero registrada en MLflow, configuración de
