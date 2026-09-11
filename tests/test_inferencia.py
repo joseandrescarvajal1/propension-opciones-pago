@@ -66,3 +66,20 @@ def test_nulos_permitidos(modelo):
     f.iloc[0, :] = None
     p = modelo.probabilidad(f)
     assert np.isfinite(p).all()
+
+
+def test_contribuciones_reproducen_la_probabilidad(modelo, filas):
+    C, base = modelo.contribuciones(filas)
+    assert C.shape == (len(filas), len(modelo.features))
+    p = 1 / (1 + np.exp(-(base + C.sum(axis=1))))
+    assert np.allclose(p, modelo.probabilidad(filas), atol=1e-6)
+
+
+def test_explicar_devuelve_k_factores_ordenados(modelo, filas):
+    exp = modelo.explicar(filas, k=4)
+    assert len(exp) == len(filas)
+    for e in exp:
+        assert len(e["factores"]) == 4 and 0 <= e["prob_uno"] <= 1
+        abs_c = [abs(f["contribucion"]) for f in e["factores"]]
+        assert abs_c == sorted(abs_c, reverse=True)
+        assert all(f["sentido"] in ("sube", "baja") and f["variable"] in modelo.features for f in e["factores"])

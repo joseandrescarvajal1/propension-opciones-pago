@@ -20,3 +20,9 @@ pytest
 pytest-cov
 ruff
 google-cloud-storage
+shap
+deepagents
+langchain-google-genai
+langgraph
+langgraph-checkpoint-sqlite
+streamlit

@@ -6,7 +6,8 @@ substitutions:
   _REGION: us-central1
   _REPO: propension
   _SERVICE: propension-api
-  _MODELO_RUTA: gs://${PROJECT_ID}-modelos/modelos/v4
+  _MODELO_BUCKET_SUFIJO: "-modelos/modelos/v4"   # el bucket se arma con $PROJECT_ID en el paso de render
+  _MODELO_RUTA: ""                               # si se indica, tiene prioridad (lo hace GitHub Actions)
   _MIN_INSTANCES: "0"
   _SHORT_SHA: manual
 
@@ -25,7 +26,8 @@ steps:
     args:
       - -c
       - |
-        sed -e "s|__ENV__|${_ENV}|g"             -e "s|__IMAGE__|${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}|g"             -e "s|__PROJECT_ID__|${PROJECT_ID}|g"             -e "s|__MODELO_RUTA__|${_MODELO_RUTA}|g"             -e "s|__MIN_INSTANCES__|${_MIN_INSTANCES}|g"             deploy/service.yaml > /workspace/service.rendered.yaml
+        MODELO_RUTA="${_MODELO_RUTA}"; [ -n "$$MODELO_RUTA" ] || MODELO_RUTA="gs://${PROJECT_ID}${_MODELO_BUCKET_SUFIJO}"
+        sed -e "s|__ENV__|${_ENV}|g"             -e "s|__IMAGE__|${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_SHORT_SHA}|g"             -e "s|__PROJECT_ID__|${PROJECT_ID}|g"             -e "s|__MODELO_RUTA__|$${MODELO_RUTA}|g"             -e "s|__MIN_INSTANCES__|${_MIN_INSTANCES}|g"             deploy/service.yaml > /workspace/service.rendered.yaml
 
   - id: deploy
     name: gcr.io/cloud-builders/gcloud

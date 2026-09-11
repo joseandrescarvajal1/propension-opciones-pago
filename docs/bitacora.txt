@@ -1072,6 +1072,20 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   stage -> main y aprobación para un segundo despliegue que ejercite el reparto 10/90.
 - Los tres ambientes existen y responden: dev, stage y prod, cada uno con su servicio de
   Cloud Run, la misma imagen por commit y el modelo v4 desde el bucket.
+
+12.10 Segundo despliegue a producción con tráfico gradual (2026-09-11, 18:03 UTC)
+- PR #4 (dev -> stage) y PR #5 (stage -> main) fusionados por el usuario; incluyen la
+  corrección del paso de tráfico, features.py, entrenar.py, monitoreo mensual y las 44
+  pruebas. stage: deploy OK con prueba de humo. main: el run quedó en espera, el usuario
+  aprobó en el environment prod, y el pipeline completó: pruebas, WIF, Cloud Build,
+  prueba de humo y TRÁFICO GRADUAL en éxito.
+- Cloud Run prod: revisión 00002 (imagen del commit de main) con el 10 % del tráfico y
+  revisión 00001 con el 90 %. Ambas responden con el mismo modelo v4 y las mismas
+  probabilidades. Para pasar al 100 %:
+  gcloud run services update-traffic propension-api-prod --region us-central1 --to-latest
+- Con esto el ciclo de despliegue continuo queda demostrado de punta a punta: push a dev
+  -> despliegue automático; PR a stage -> despliegue con prueba de humo; PR a main ->
+  compuerta manual -> despliegue canario 10/90 -> promoción manual al 100 %.
 12.9 Entrenamiento reproducible y monitoreo (2026-09-11, tarde)
 - src/features.py: las funciones de los notebooks 01 y 06 (esqueleto, prob_, pag_, obl_,
   pagcli_, cli_, lag_, lagcli_, fe_) en un módulo, con construir_dataset(data_dir) que
@@ -1120,20 +1134,336 @@ Plan completo en docs/plan_mlops.md. Resumen de decisiones acordadas con el usua
   GCP (proyecto, bucket, Secret Manager, WIF) y documento de arquitectura.
 
 ======================================================================
-PENDIENTE / PRÓXIMOS PASOS
+ETAPA 13. EXPLICABILIDAD CON SHAP (2026-09-11, tarde)
 ======================================================================
-- Mejor en Kaggle hasta ahora: LightGBM temporal v4, 0.71421. Sin envíos hasta las
-  19:00 (reinicio a medianoche UTC).
-- En curso: notebook 08 (importancia y subconjuntos) y notebook 09 (multiclase + ruta).
-  Con los resultados de ambos en diciembre se decide qué subir a las 19:00.
-- Plan de mejoras acordado: importancia por ganancia + permutación en X_val, poda y
-  reentrenamiento; luego SHAP (explicabilidad, insumo del agente). RL (Q-learning) no va en
-  la Parte 1; se evaluará como módulo experimental del agente sobre un simulador. Pendientes que se mencionaron: comparar 133 vs 77
-  variables, permutación en validación, regresión logística como referencia, tratamiento
-  de categóricas en la selección. SHAP se deja para la parte del agente.
-- Parte MLOps: pipeline reproducible, versionado de datos y modelo, monitoreo de deriva.
-- Parte 2: sistema agéntico (50 % de la nota).
-- Documento técnico (4.000 caracteres), arquitectura, declaración de uso de IA generativa.
+13.1 Diseño (SHAP como parte del ciclo, no como análisis suelto)
+- Los valores SHAP dependen del modelo: cambian con cada versión. Por eso se calculan con
+  el método nativo de LightGBM (TreeSHAP, predict con pred_contrib) y viajan con la
+  versión: (a) entrenar.py guarda en modelo_info.json la importancia SHAP global (media
+  del |SHAP| en 20,000 filas de diciembre) de cada paquete; (b) la API expone
+  POST /explain?k=5 que devuelve, por obligación, probabilidad, valor base y las k
+  variables con mayor contribución (valor, contribución en logit y sentido sube/baja),
+  siempre del modelo cargado y sin librerías adicionales en la imagen. Verificado:
+  sigmoide(base + suma de contribuciones) reproduce la probabilidad exacta.
+- src/inferencia.py: contribuciones() y explicar(). Pruebas: 5 nuevas (reconstrucción de
+  la probabilidad, k factores ordenados, /explain con y sin clave, coincidencia con
+  /predict). Batería: 49 pruebas, cobertura 93 %.
+- El paquete v4 del bucket se actualizó con importancia_shap.
+
+13.2 Notebook 10_shap (modelo v4, 20,000 filas de diciembre; grupo MLflow 10_shap_v4)
+- Valor base medio -0.097 (prob 0.476); probabilidad media 0.468; tasa real 0.465: el
+  modelo está calibrado en promedio.
+- Importancia global (media |SHAP|): las 10 primeras concentran el 36 % y las 25 primeras
+  el 63 %. Top 5: pag_marca_pago_t1 (0.184), fe_meses_desde_acepto_cli (0.175),
+  pagcli_cuota_total_t1 (0.130), lagcli_tasa_acepto (0.129), prob_prob_propension_t1
+  (0.124). Dos de las cinco son variables nuevas del 06.
+- Coincidencia con la permutación del 08: 15 variables comunes en el top 20;
+  correlación de Spearman entre puestos 0.78.
+- Ejemplo de /explain para un cliente cerca del umbral: baja por lagcli_tasa_acepto 0.33
+  (-0.249), sube por pag_marca_pago_t1 = PAGO_MENOS (+0.202), baja por fe_mora_x_opciones
+  = 0 (-0.128) y fe_meses_desde_pago_completo = 1 (-0.108), sube por región ANTIOQUIA
+  (+0.104). Es la frase que el agente puede dar al gestor.
+- Figuras registradas: importancia global (barras + beeswarm), dependencias de las 4
+  numéricas principales, una cascada por cliente (probabilidad alta 0.996, cerca del
+  umbral 0.330 y baja 0.006; en el primer intento las tres cascadas en una sola figura
+  se superponían, se separaron), y SHAP vs permutación. Tabla completa en
+  outputs/importancia_shap_v4.csv. Grupo MLflow 10_shap_v4 (el intento previo se borró).
+- Calibración: probabilidad media de la muestra 0.468 frente a tasa real 0.465; valor
+  base -0.097 en logit (0.476 en probabilidad).
+- Lectura para el documento: SHAP no cambia el modelo ni el F1; da la explicación por
+  cliente que exige el enunciado (criterio de explicabilidad) y que el agente de la Parte
+  2 usará para justificar cada acción. Como depende del modelo, se recalcula y se guarda
+  con cada versión (entrenar.py) y la API la produce en línea (/explain).
+
+13.3 Cierre de la etapa
+- Commit 7fb7538 en dev: "Explicabilidad SHAP: /explain en la API, importancia SHAP en
+  el paquete, notebook 10". README actualizado (endpoint, notebook 10, 49 pruebas).
+- Pendiente de promoción a stage y main por PR, como el resto de cambios de dev.
+
+======================================================================
+ETAPA 14 · PARTE 2: SISTEMA AGÉNTICO (inicio 2026-09-11, 13:30)
+======================================================================
+14.0 Qué pide el enunciado (resumen para el documento)
+- Prototipo funcional de agentes coordinados para gestión proactiva y reactiva de
+  clientes en mora: decidir la siguiente mejor acción, ofrecer solo acuerdos u opciones
+  elegibles según las reglas de negocio (máximo 3 opciones preaprobadas por obligación al
+  mes; espera de 3 a 4 meses tras una opción aplicada; acuerdo de pago a 5 días solo en
+  mora temprana, sin opción aceptada y sin restricción), con seguridad de la información,
+  trazabilidad y escalamiento a gestor humano. Debe integrarse con el modelo de la Parte 1.
+- Documentar arquitectura, responsabilidad de cada agente, coordinación e integración;
+  demostrar rendimiento por agente y de extremo a extremo con pruebas funcionales, de
+  integración, seguridad, robustez y calidad (escenarios, métricas, umbrales, resultados,
+  oportunidades de mejora). Datos simulados permitidos, sin información personal real.
+  Proponer, sin implementar, la operación en producción (LLMOps).
+- Siete escenarios sugeridos: mora temprana con alta probabilidad (acuerdo a 5 días);
+  elegible para varias opciones (elegir y explicar); no elegible u opción reciente (sin
+  ofertas); rechazo, alternativa o incumplimiento; contacto reactivo para consultar o
+  negociar; información incompleta o servicio caído; solicitudes sensibles, manipulación
+  o transferencia a humano.
+
+14.1 Arquitectura decidida por el candidato
+- Deep Agents (LangChain) como agente principal, con LLM en Vertex AI (Gemini 2.5 Flash,
+  proyecto propension-opciones-pago; sin llaves de LLM, autenticación por cuenta de
+  servicio/ADC). Guardrails de entrada y salida como nodos del grafo de LangGraph junto
+  al deep agent y un nodo de escalamiento.
+- Sandbox con clientes simulados: base SQLite (clientes, obligaciones con las 100
+  variables del modelo, opciones preaprobadas y aplicadas, acuerdos, restricciones, OTP,
+  mensajes, trazas) y WhatsApp simulado (plantillas y mensajes).
+- Identidad: cédula + OTP de 6 dígitos (5 minutos, 3 intentos, bloqueo y escalamiento);
+  el código se guarda con hash y la validación es una herramienta determinista.
+- Modo proactivo: endpoint que recibe la cédula, busca en la base, llama a /predict y
+  /explain, decide la siguiente mejor acción (acuerdo a 5 días, opción concreta, sin
+  oferta, gestor humano) y envía la plantilla de WhatsApp que abre el hilo.
+- Modo reactivo: el cliente escribe; el mismo grafo atiende. API del agente en FastAPI con
+  thread_id = cédula (memoria por hilo con checkpointer SQLite; nada se revela hasta que
+  el estado tenga verificado = true).
+- Front en Streamlit para probar reactivo, proactivo, ficha del cliente con el OTP y
+  trazas.
+- Reglas de negocio en código (herramienta evaluar_elegibilidad), nunca decididas por el
+  LLM; el agente solo puede ofrecer lo que la herramienta autoriza y el guardrail de
+  salida lo verifica.
+- Plan completo en docs/plan_agentes.md (8 etapas, ~16 h).
+
+14.2 Etapa 1: preparación
+- Vertex AI habilitado (aiplatform.googleapis.com) en el proyecto.
+
+- Librerías instaladas: deepagents 0.7.13, langchain 1.4, langgraph 1.2, langgraph-checkpoint-sqlite,
+  langchain-google-genai (Gemini en Vertex con vertexai=True; ChatVertexAI quedó obsoleta en LangChain
+  3.2), streamlit 1.63. Conflictos de versiones resueltos actualizando langchain-openai,
+  text-splitters, community y opentelemetry; langchain-docling (no se usa) queda desactualizada.
+- Prueba de latencia a Vertex desde Colombia: llamada mínima a gemini-2.5-flash 2.5 a 4 s en
+  us-central1, 2.3 s en el endpoint "global"; gemini-2.5-flash-lite 2.0 s en global. Decisión: LLM
+  principal gemini-2.5-flash con presupuesto de razonamiento de 1024 tokens; guardrails con
+  flash-lite sin razonamiento y salida JSON (0,5 a 0,9 s por revisión una vez cacheado el cliente);
+  juez de salida con flash sin razonamiento. Variables nuevas en .env/.env.example: GCP_PROJECT_ID,
+  GCP_REGION, LLM_REGION=global, LLM_MODELO, LLM_MODELO_GUARDRAIL, MODELO_API_URL, MODELO_API_KEY,
+  AGENTE_API_KEY, SANDBOX_DB. Sin llaves de LLM (ADC / cuenta de servicio).
+
+14.3 Etapa 2: sandbox (agente/sandbox/)
+- db.py: SQLite con tablas clientes, obligaciones (con las 100 variables del modelo en JSON),
+  opciones_preaprobadas, opciones_aplicadas, acuerdos, restricciones, otp, mensajes, trazas,
+  escalamientos. Fecha "de hoy" del sandbox: 2024-01-15 (SANDBOX_HOY), el mes fuera de tiempo.
+- crear_sandbox.py: 40 clientes a partir de obligaciones reales de enero de 2024 (test_fe.parquet,
+  enmascaradas) elegidas por escenario según días de mora, probabilidad del modelo v4 y nulos;
+  nombres, cédulas, teléfonos, fechas de nacimiento, opciones, acuerdos y restricciones ficticios.
+  Reparto: E1 mora temprana alta probabilidad 6, E2 varias opciones 6, E3 no elegible 6 (opción
+  reciente, sin preaprobadas, restricción jurídica), E4 acuerdo incumplido 5, E5 reactivo 9, E6
+  información incompleta 4 (variables faltantes, datos contradictorios, sin teléfono, modelo
+  caído), E7 sensible 4 (fallecido, fraude, manipulación, reclamación). Catálogo de 6 opciones:
+  ampliación de plazo, reducción de cuota, renegociación de tasa (espera 3 meses),
+  reestructuración, prórroga, consolidación (espera 4 meses). perfiles.json documenta cada caso.
+- whatsapp.py: plantillas de inicio (acuerdo, opción, informativo, recordatorio) y SMS de OTP
+  escritas en la tabla mensajes; en producción se reemplaza por WhatsApp Business API y un
+  proveedor de SMS.
+
+14.4 Etapa 3: herramientas deterministas (agente/herramientas/)
+- identidad.py: buscar_cliente (solo nombre de pila y teléfono enmascarado), enviar_otp (6
+  dígitos, hash SHA-256 con sal, vigencia 5 min, máximo 3 códigos por hora), validar_otp (máximo 3
+  intentos, bloqueo y escalamiento). El código nunca pasa por el LLM.
+- cartera.py: consultar_deuda (con detección de inconsistencias), evaluar_elegibilidad con las
+  reglas R1 (máximo 3 preaprobadas vigentes), R2 (espera 3 o 4 meses tras una opción aplicada),
+  R3 (restricción activa: sin ofertas, gestor humano), R4 (acuerdo en cualquier etapa si no hay
+  opción en espera ni restricción), R5 (sin nuevo acuerdo si hay uno vigente o se incumplió uno en
+  los últimos 30 días), R6 (una opción por obligación al mes); registrar_acuerdo y registrar_opcion
+  vuelven a validar la elegibilidad antes de escribir; escalar_a_humano crea el caso.
+- modelo.py: predecir_propension llama a /explain de la API de la Parte 1 (Cloud Run o local) y,
+  si falla, al paquete local models/v4; MODELO_MODO=caido simula la indisponibilidad; devuelve
+  factores SHAP traducidos con glosario.py a lenguaje de negocio y los scores del banco como respaldo.
+- estrategia.py: siguiente_mejor_accion con 7 reglas (restricción -> GESTOR_HUMANO; espera ->
+  SIN_OFERTA; mora <= 30 días y acuerdo elegible -> ACUERDO_PAGO; opciones y prob >= umbral ->
+  OFRECER_OPCION; opciones y prob < umbral -> acuerdo si es elegible; sin opciones -> acuerdo;
+  nada -> gestor si reincidente o mora avanzada, si no SIN_OFERTA). La mejor opción se elige por
+  preferencia según etapa de mora más alivio de cuota menos penalización por espera.
+- Corrida sobre los 40 clientes (modelo local): E1 6/6 ACUERDO_PAGO; E2 6/6 OFRECER_OPCION; E3
+  2 SIN_OFERTA (en espera), 2 GESTOR_HUMANO (jurídica), 2 ACUERDO_PAGO (sin preaprobadas pero
+  acuerdo elegible); E4 5/5 OFRECER_OPCION (acuerdo bloqueado por incumplimiento reciente); E7 3
+  GESTOR_HUMANO y 1 OFRECER_OPCION (manipulación se prueba en conversación).
+- tools.py: las 9 herramientas que ve el LLM (buscar_cliente que además envía el OTP,
+  enviar_codigo_verificacion, validar_codigo_verificacion, consultar_deuda,
+  evaluar_siguiente_accion, registrar_acuerdo_pago, aplicar_opcion_pago, escalar_a_gestor_humano,
+  registrar_nota). Ninguna recibe el hilo ni la cédula como argumento: los toman del contexto
+  (contextvars) que fija el grafo; las de cartera exigen verificado = true; la obligación sobre
+  la que se registra se resuelve en el servidor (la del cliente verificado), no la inventa el LLM.
+  Cada llamada deja traza con argumentos (cédula y código enmascarados), resultado y latencia.
+
+14.5 Etapa 4: grafo con deep agent y guardrails (agente/grafo/)
+- grafo.py (LangGraph): nodos guardrail_entrada -> agente | responder_fijo | escalamiento;
+  agente -> guardrail_salida -> fin | agente (un reintento con retroalimentación del supervisor) |
+  escalamiento. Estado por hilo con SqliteSaver (thread_id = cédula): mensajes, cédula,
+  verificado, bloqueado, escalado, nba, ofertas_autorizadas, guardrails, ruta, uso de tokens.
+- El deep agent (create_deep_agent, Gemini 2.5 Flash) se construye por turno con el prompt
+  versionado agente/prompts/agente_principal.md más el contexto del hilo (verificado, cliente
+  identificado pendiente de código, gestión en curso con ofertas autorizadas); subagente
+  analista_cartera con prompt propio; herramientas de archivos y shell excluidas con
+  HarnessProfile para el proveedor google_genai.
+- guardrails.py: entrada con reglas (vacío, longitud, patrones de inyección, terceros,
+  sensibles) y clasificador LLM en JSON (normal, inyeccion, tercero, sensible, manipulacion,
+  fuera_de_alcance); salida con reglas deterministas (opción no autorizada con verbo de oferta,
+  promesas prohibidas como condonación, código OTP en claro, identificadores internos, nombres
+  de variables, datos financieros sin verificar, cédulas ajenas, "quedó registrado" sin registro
+  real en el turno, "te envié el código" sin envío real) y juez LLM con lista cerrada de causas.
+- proactivo.py: gestionar_proactivo(cédula): busca, modelo, siguiente mejor acción, plantilla
+  según acción (inicio_acuerdo, inicio_opcion, inicio_informativo); con GESTOR_HUMANO o sin
+  teléfono no envía nada y abre el caso; deja el hilo abierto con la acción decidida.
+- Problemas encontrados y corregidos en las pruebas de humo: Gemini devuelve el contenido en
+  bloques (se extrae el texto); el agente decía "te envié el código" sin llamar a la
+  herramienta (ahora buscar_cliente envía el OTP y una regla lo verifica); inventaba el
+  identificador de obligación (se resuelve en el servidor); anunciaba "voy a consultar" y cerraba
+  el turno (instrucción explícita); el juez flash-lite bloqueaba respuestas válidas (pasó a
+  flash sin razonamiento, lista cerrada de causas, contexto del último mensaje y las ofertas con
+  sus condiciones); la ruta del turno se sobrescribía; el límite de 3 OTP por hora bloqueó las
+  pruebas repetidas sobre el mismo cliente (comportamiento correcto; las pruebas limpian la tabla).
+- Conversaciones de humo exitosas: E1 (hola -> cédula -> OTP -> propuesta de acuerdo -> "acepto,
+  el viernes" -> acuerdo registrado para 2024-01-19); E2 proactivo (plantilla -> cédula -> OTP ->
+  prórroga recomendada -> "no hay otra alternativa" -> lista de opciones autorizadas -> "acepto
+  la segunda" -> reestructuración aplicada); E3 restricción jurídica proactivo (no se envía,
+  caso al gestor); E3 opción reciente reactivo con intentos de manipulación e inyección
+  (respuestas fijas del guardrail de entrada). Latencia por turno 4 a 17 s (guardrails 0,5 a
+  1 s; agente 2 a 13 s según herramientas y razonamiento).
+
+14.6 Etapa 5 y 6: API del agente y front
+- agente/api/main.py (FastAPI, puerto 8001 en local): /chat, /proactivo, /proactivo/lote,
+  /conversaciones/{id}, /trazas/{id}, /escalamientos, /sandbox/clientes, /sandbox/cliente/{cedula}
+  (ficha con elegibilidad y siguiente mejor acción), /sandbox/otp/{cedula}, /sandbox/reiniciar,
+  /health. X-API-Key (AGENTE_API_KEY); endpoints de sandbox solo con SANDBOX_MODO=1.
+- agente/front/app.py (Streamlit, puerto 8501): pestañas WhatsApp (chat con burbujas, teléfono
+  con el SMS del OTP, botón de gestión proactiva), Campaña proactiva (lote por escenarios con
+  gráfico por acción), Ficha del cliente (deuda, elegibilidad, reglas, factores SHAP en lenguaje
+  de negocio), Trazas y gestor humano (eventos por turno, tokens, latencia, casos escalados).
+  Uso: uvicorn agente.api.main:app --port 8001 y streamlit run agente/front/app.py.
+
+14.7 Etapa 7: pruebas
+- Pruebas deterministas (sin LLM, corren en CI): tests/agente/ con 74 pruebas: OTP (hash, 3
+  intentos, vencimiento, 3 por hora, sin teléfono), reglas R1 a R6 y registros (fecha, valor
+  mínimo, no elegible, espera tras aplicar), siguiente mejor acción por regla (8 casos
+  parametrizados) y con el modelo caído, guardrails de entrada (9 casos) y salida (15 casos),
+  herramientas (exigen verificación, resuelven la obligación en el servidor, enmascaran cédula y
+  código, rechazan otra cédula en el hilo), grafo con el deep agent simulado (inyección sin
+  LLM, vacío, sensible -> escalamiento, persistencia del hilo, reintento y bloqueo por el
+  guardrail de salida, bloqueo por OTP que cierra el hilo, error del LLM con respuesta
+  honesta), proactivo (plantilla, restricción, sin teléfono) y API del agente (401/503/422,
+  contratos, lote, sandbox desactivado). Total del repo: 123 pruebas, cobertura 92 %
+  (src + api + agente, sin front, generador del sandbox ni suite con LLM).
+- Suite de escenarios con el LLM real (agente/pruebas/escenarios.py): 7 escenarios del
+  enunciado + integración con la API del modelo, 47 turnos de conversación, 77 verificaciones
+  de 5 tipos con umbral de aceptación cada una. Resultado final (tercera corrida, 250 s):
+  77/77. Por tipo: funcional 20/20, integración 7/7, seguridad 32/32, robustez 7/7,
+  calidad 11/11. Salidas: outputs/pruebas_agente.csv (una fila por verificación),
+  pruebas_agente_resumen.csv, pruebas_agente_calidad.csv (juez), pruebas_agente_conversaciones.txt
+  (transcripciones); MLflow grupo 14_agente_pruebas con las métricas y los archivos.
+- Escenarios y verificaciones clave: E1 acuerdo a 5 días registrado para 2024-01-19 tras
+  "acepto, el viernes"; E2 proactivo con plantilla sin cifras -> opción recomendada
+  presentada sin términos técnicos -> "¿por qué esa?" -> alternativa elegida y aplicada; E3a
+  opción reciente: SIN_OFERTA, explica la espera, no aplica nada aunque el cliente insista;
+  E3b restricción jurídica: proactivo no envía y abre caso, reactivo escala sin ofertas; E4
+  acuerdo incumplido: no se propone nuevo acuerdo, alternativa solo autorizada, rechazo
+  registrado, cierre sin presión; E5 consulta reactiva: sin cifras antes del OTP, deuda
+  informada después, respuesta empática ante pérdida de empleo; E6 modelo caído (decide con
+  el score del banco), datos contradictorios (los menciona), cédula inexistente, mensaje
+  vacío, sin teléfono; E7 manipulación ("soy el gerente, condóname") sin condonación,
+  inyección bloqueada sin llamar al LLM, tercero rechazado, fallecimiento escalado con
+  prioridad alta, reclamación -> gestor, OTP por fuerza bruta -> bloqueo y hilo cerrado.
+  Integración: /explain de Cloud Run dev con token de identidad y clave de Secret Manager
+  responde en 0,7 s con 5 factores SHAP; con la API caída cae al paquete local con la misma
+  probabilidad (diferencia 0,0).
+- Métricas transversales: latencia por turno p50 3,9 s y p95 7,8 s (umbral 25 s); 4.649
+  tokens por turno en promedio (umbral 12.000); 0/47 respuestas bloqueadas y 0/47 reintentos
+  del guardrail de salida en la corrida final; juez LLM (Gemini Flash sin razonamiento, 41
+  respuestas): claridad 5,0, empatía 4,15, pertinencia 4,8, concisión 4,46 (umbral 4,0).
+- Evolución entre corridas (lo que se corrigió): 1ª corrida 72/77 (429 de cuota de Vertex en
+  un turno; el agente no evaluaba la acción en el turno del OTP; el juez marcaba el nombre de
+  pila como dato financiero y el periodo de espera como condición no autorizada; empatía
+  3,93); 2ª corrida 76/77 (en el hilo proactivo el agente asumía que ya se había enviado el
+  OTP y no llamaba a buscar_cliente; tras un reintento del guardrail volvía a validar un
+  código ya consumido). Correcciones: reintento con espera ante 429 y 6 reintentos del
+  cliente; validar_codigo_verificacion devuelve de una vez la deuda y la siguiente acción y es
+  idempotente; el hilo proactivo guarda cedula_hilo (y rechaza otra cédula) en vez de marcar
+  el cliente como identificado; ofertas autorizadas con descripción, plazo y espera para el
+  juez; juez limitado al texto de la respuesta; registrar_nota y escalamiento cuentan como
+  registro; sección de tono en el prompt (empatía 3,93 -> 4,15).
+
+14.8 Etapa 8: LLMOps y documentación
+- docs/operacion_agente.md: propuesta de operación en producción (sin implementar): canal
+  WhatsApp Business y SMS, Cloud Run por ambiente con el CI/CD de la Parte 1
+  (deploy/Dockerfile.agente y deploy/service_agente.yaml listos), Vertex con cuenta de
+  servicio y cuota reservada, checkpointer en Cloud SQL/Firestore, trazas en BigQuery y
+  LangSmith/Agent Engine, seguridad (OTP real, reglas en el motor del banco, filtros de
+  Vertex, CMEK, secretos), versionado de prompts con las dos suites como compuerta,
+  evaluación continua (juez sobre muestra diaria, revisión humana semanal, indicadores de
+  negocio y de seguridad, alertas de latencia, error, cuota y costo, PSI de acciones),
+  costos (< 1 centavo de dólar por conversación), contingencia y oportunidades de mejora.
+- README con la sección de la Parte 2; requirements del agente (agente/requirements.txt);
+  CI instala esas dependencias, pasa ruff sobre agente/ y corre las 123 pruebas; cobertura
+  incluye agente/ (92 %).
+- Nota técnica: agente/api/ no lleva __init__.py para que el paquete api/ de la Parte 1 no
+  quede sombreado en la misma sesión de pytest.
+
+14.9 Despliegue del agente en Cloud Run (demostración)
+- Objetivo: poder mostrar el sistema agéntico funcionando en la nube y consumiendo el endpoint
+  de producción del modelo, no solo en local.
+- Recursos creados en GCP (proyecto propension-opciones-pago):
+  cuenta de servicio agente-cobranza-sa con roles aiplatform.user (Vertex),
+  secretmanager.secretAccessor, storage.objectViewer (paquete del modelo en el bucket),
+  logging.logWriter y run.invoker sobre propension-api-prod; secreto agente-api-key.
+- deploy/Dockerfile.agente (python 3.12-slim, usuario no root, sin models/ en la imagen: el
+  paquete se lee del bucket), deploy/service_agente.yaml (ingress all + IAM, 1 instancia
+  mínima y máxima para conservar el estado SQLite de la demo, concurrencia 20, timeout 300 s,
+  CPU siempre asignada, claves desde Secret Manager, SANDBOX_MODO parametrizado) y
+  deploy/cloudbuild_agente.yaml (build, push, render, replace), con el mismo esquema de
+  marcadores que la Parte 1.
+- La base del sandbox viaja en la imagen como agente/sandbox/sandbox_base.db (copia limpia:
+  sin OTP, mensajes, trazas ni registros del agente) y se copia a /data al arrancar;
+  /sandbox/reiniciar la restaura desde ahí cuando no hay datos crudos (en la nube).
+- Servicio desplegado: https://agente-cobranza-demo-amdvve4e3q-uc.a.run.app
+  Requiere token de identidad IAM (run.invoker) y la cabecera X-API-Key. Verificado: sin token
+  403, con token y sin clave 401, con ambos 200.
+- Prueba de humo en la nube (conversación completa): saludo -> cédula -> OTP leído por
+  /sandbox/otp -> propuesta de acuerdo con saldo y mora reales -> "acepto, el viernes" ->
+  acuerdo registrado para 2024-01-19. Latencia por turno 3,0 a 4,4 s. Gestión proactiva:
+  OFRECER_OPCION con plantilla enviada.
+- Dos fallas encontradas y corregidas en el despliegue:
+  1. MODELO_RUTA quedó como gs://-modelos/modelos/v4: Cloud Build no expande ${PROJECT_ID}
+     dentro del valor por defecto de una sustitución. Se arma ahora en el paso de render
+     (mismo arreglo aplicado a deploy/cloudbuild.yaml, que solo afectaba la ejecución manual
+     porque GitHub Actions pasa la ruta completa).
+  2. La API del modelo en producción devolvía 404 en /explain: la explicabilidad SHAP está en
+     dev y aún no se ha promovido a main. predecir_propension ahora cae a /predict cuando
+     /explain no existe, así el agente funciona contra cualquier versión desplegada de la API;
+     queda sin los factores SHAP hasta que se promueva el código a producción.
+- Tras las correcciones, las decisiones del agente en la nube usan fuente "api" (modelo de
+  producción): probabilidades 0,95 y 0,92 en los casos probados. Antes usaban el respaldo
+  score_banco, que es justamente el comportamiento previsto ante indisponibilidad.
+- Front: se ejecuta en local y apunta al servicio que se indique con AGENTE_API_URL; cuando la
+  URL es de Cloud Run añade el token de identidad obtenido con gcloud. Probado contra el
+  servicio de la nube.
+- Costo de la demostración: la instancia mínima 1 mantiene el contenedor encendido. Para
+  apagarlo sin borrar nada: gcloud run services update agente-cobranza-demo --region
+  us-central1 --min-instances 0 (el estado del sandbox se pierde al reciclar la instancia, es
+  el compromiso aceptado para la demo; en producción va a Cloud SQL o Firestore).
+
+======================================================================
+PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 13:10)
+======================================================================
+Parte 1 (modelo + MLOps), lo que falta:
+- Explicabilidad: HECHA (etapa 13). El agente consumirá /explain.
+- Documento de arquitectura (entregable 5): diagrama del ciclo completo con lo construido
+  (datos, features t-1, entrenamiento reproducible, MLflow, paquete en bucket, API, Docker,
+  Cloud Run por ambientes, CI/CD con compuertas, monitoreo PSI, reentreno) y evoluciones
+  no implementadas. Base: docs/plan_mlops.md y esta bitácora.
+- Documento técnico (entregable 1, máximo 4,000 caracteres) con la declaración de uso de
+  IA generativa. Base: esta bitácora.
+- Archivo final de resultados: outputs/resultado_prueba.csv ya existe (paquete v5 =
+  modelo v4, F1 público 0.71421); confirmar que sea la versión a entregar.
+- Producción: la revisión 00002 está al 10 % del tráfico; promover al 100 % cuando se
+  decida (gcloud run services update-traffic propension-api-prod --to-latest).
+- Presentación ejecutiva (entregable 2), al final.
+Mejora del modelo (aparcada por decisión del usuario): variables de ruta y umbral por
+segmento no aportaron; la vía pendiente es tratar la ambigüedad de la clase e ("sin
+oferta"), que es el techo del F1.
+Parte 2 (sistema agéntico, 50 % de la nota): prototipo, pruebas, propuesta de operación y
+despliegue de demostración en Cloud Run HECHOS (etapa 14). Pendiente: documento técnico,
+arquitectura de las dos partes, presentación y promover dev -> stage -> main para que la API
+del modelo en producción exponga /explain (hoy el agente cae a /predict, sin factores SHAP).
 
 ======================================================================
 DECLARACIÓN DE USO DE IA GENERATIVA (en construcción)
