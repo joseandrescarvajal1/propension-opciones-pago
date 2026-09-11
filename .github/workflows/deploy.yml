@@ -1,0 +1,70 @@
+# Despliegue continuo en GCP según la rama (se dispara con el push; primero corre el CI como trabajo previo):
+#   dev   -> propension-api-dev   (min 0 instancias)           automático
+#   stage -> propension-api-stage (min 1) + prueba de humo      automático
+#   main  -> propension-api-prod  (min 1) + aprobación manual   tráfico 10 % y luego 100 %
+# Autenticación con Workload Identity Federation (sin llaves JSON en GitHub).
+# Requiere en GitHub: variables GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_SA_EMAIL, GCP_REGION;
+# secreto API_KEY_SMOKE (solo para la prueba de humo en stage); environment "prod" con revisores.
+name: deploy
+
+on:
+  push:
+    branches: [dev, stage, main]
+    paths-ignore: ["docs/**", "notebooks/**", "**.md"]   # cambios solo de documentación no despliegan
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  pruebas:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  desplegar:
+    needs: pruebas
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name }}
+    env:
+      RAMA: ${{ github.ref_name }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parámetros por entorno
+        id: env
+        run: |
+          case "$RAMA" in
+            main)  echo "entorno=prod"  >> $GITHUB_OUTPUT; echo "min=1" >> $GITHUB_OUTPUT ;;
+            stage) echo "entorno=stage" >> $GITHUB_OUTPUT; echo "min=1" >> $GITHUB_OUTPUT ;;
+            *)     echo "entorno=dev"   >> $GITHUB_OUTPUT; echo "min=0" >> $GITHUB_OUTPUT ;;
+          esac
+          echo "sha=${SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Autenticación en GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SA_EMAIL }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Construir, publicar y desplegar (Cloud Build)
+        run: |
+          gcloud builds submit --project "${{ vars.GCP_PROJECT_ID }}" --config deploy/cloudbuild.yaml \
+            --substitutions=_ENV=${{ steps.env.outputs.entorno }},_REGION=${{ vars.GCP_REGION }},_SHORT_SHA=${{ steps.env.outputs.sha }},_MIN_INSTANCES=${{ steps.env.outputs.min }},_MODELO_RUTA=gs://${{ vars.GCP_PROJECT_ID }}-modelos/modelos/v4
+
+      - name: Prueba de humo (stage y prod)
+        if: steps.env.outputs.entorno != 'dev'
+        run: |
+          URL=$(gcloud run services describe propension-api-${{ steps.env.outputs.entorno }} --region ${{ vars.GCP_REGION }} --format 'value(status.url)')
+          TOKEN=$(gcloud auth print-identity-token)
+          curl -sf -H "Authorization: Bearer $TOKEN" "$URL/health"
+          curl -sf -H "Authorization: Bearer $TOKEN" -H "X-API-Key: ${{ secrets.API_KEY_SMOKE }}" "$URL/version"
+
+      - name: Tráfico gradual en producción (10 % a la revisión nueva)
+        if: steps.env.outputs.entorno == 'prod'
+        run: |
+          gcloud run services update-traffic propension-api-prod --region ${{ vars.GCP_REGION }} --to-latest=false
+          gcloud run services update-traffic propension-api-prod --region ${{ vars.GCP_REGION }} --to-revisions LATEST=10
+          echo "Revisión nueva con 10 % del tráfico. Para pasar al 100 %: gcloud run services update-traffic propension-api-prod --to-latest"

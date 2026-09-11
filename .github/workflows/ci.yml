@@ -1,0 +1,50 @@
+# Integración continua: corre en cada pull request y, vía workflow_call, como primer trabajo de deploy.yml.
+# Si las pruebas fallan, no se despliega nada.
+name: ci
+
+on:
+  pull_request:
+    branches: [dev, stage, main]
+  workflow_call:        # lo invoca deploy.yml antes de desplegar
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r api/requirements.txt
+          pip install pytest pytest-cov httpx ruff scikit-learn
+
+      - name: Lint (ruff)
+        run: ruff check src api tests
+
+      - name: Paquete de modelo para las pruebas
+        # El modelo real vive en Cloud Storage; para las pruebas se descarga la versión indicada
+        # (o se usa un paquete mínimo si no hay credenciales). Ver docs/arquitectura.md.
+        env:
+          MODELO_URL: ${{ vars.MODELO_URL }}
+        run: |
+          mkdir -p models/v4
+          if [ -n "$MODELO_URL" ]; then
+            curl -sSL "$MODELO_URL/modelo.txt" -o models/v4/modelo.txt
+            curl -sSL "$MODELO_URL/modelo_info.json" -o models/v4/modelo_info.json
+          else
+            python tests/crear_modelo_minimo.py models/v4
+          fi
+
+      - name: Pruebas unitarias con cobertura
+        env:
+          API_KEY: clave-de-prueba
+          MODELO_RUTA: models/v4
+        run: pytest tests -q --cov --cov-report=term-missing
+
+      - name: Construir imagen (verificación)
+        run: docker build -f deploy/Dockerfile -t propension-api:ci .
