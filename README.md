@@ -7,13 +7,14 @@ Modelo que estima, con un mes de anticipación, la probabilidad de que una oblig
 | Carpeta | Contenido |
 |---|---|
 | `notebooks/` | Exploración (02), construcción del dataset (01), modelos (03 a 09), explicabilidad SHAP (10). Cada notebook registra sus experimentos en MLflow. |
+| `src/presentacion/` | Genera la presentación ejecutiva: figuras desde los datos, captura de una conversación real y armado del `.pptx` con notas del orador. |
 | `src/` | `download_data.py` (descarga), `features.py` (variables con corte t-1), `entrenar.py` (entrenamiento reproducible), `inferencia.py` (predicción), `monitoreo.py` y `monitoreo_mensual.py` (PSI y desempeño), `tracking.py` (MLflow), `mlflow_ui.py`. |
 | `api/` | API FastAPI: `/health`, `/version`, `/predict`, `/explain` (valores SHAP por obligación). |
 | `agente/` | Parte 2: `sandbox/` (base SQLite con 40 clientes simulados y WhatsApp/SMS simulados), `herramientas/` (OTP, elegibilidad, modelo, siguiente mejor acción), `grafo/` (LangGraph: guardrails, deep agent, escalamiento, proactivo), `prompts/`, `api/` (FastAPI del agente), `front/` (Streamlit), `pruebas/` (escenarios con LLM real). |
 | `tests/` | 121 pruebas con pytest: 49 de la Parte 1 (variables y no fuga temporal, inferencia, API, monitoreo) y 72 de la Parte 2 sin LLM (OTP, reglas, estrategia, guardrails, herramientas, grafo, API). |
 | `deploy/` | `Dockerfile`, `service.yaml` (Cloud Run), `cloudbuild.yaml`, `job_monitoreo.yaml` (job mensual); `Dockerfile.agente`, `service_agente.yaml` y `cloudbuild_agente.yaml` (API del agente); `Dockerfile.front`, `service_front.yaml` y `cloudbuild_front.yaml` (front del sandbox). |
 | `.github/workflows/` | `ci.yml` (lint, pruebas, imagen) y `deploy.yml` (despliegue por rama). |
-| `docs/` | `arquitectura.md` (diseño y operación de las dos partes, con diagramas), `operacion_agente.md` (LLMOps), `plan_mlops.md`, `plan_agentes.md`, bitácora del proyecto, texto de la competencia y diccionarios. |
+| `docs/` | `documento_tecnico.md` (entregable 1), `arquitectura.md` (diseño y operación de las dos partes, con diagramas), `operacion_agente.md` (LLMOps), `plan_mlops.md`, `plan_agentes.md`, bitácora del proyecto, texto de la competencia y diccionarios. |
 
 Los datos (`data/`), los modelos entrenados (`models/`), las salidas (`outputs/`) y la base de MLflow no se versionan.
 

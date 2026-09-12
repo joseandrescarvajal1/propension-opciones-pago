@@ -1604,6 +1604,89 @@ ETAPA 15 · ENTREGABLES
 - Marca explícita de lo implementado frente a lo propuesto, para que el evaluador distinga.
 - Cubre también la exigencia del entregable 4 de incluir diagramas del framework de agentes.
 
+15.3 Entregable 1: documento técnico (docs/documento_tecnico.md)
+- Límite de 4.000 caracteres excluyendo anexos, imágenes y tablas. Primera versión: 6.990; tras
+  cuatro pasadas de recorte quedó en 3.828 (cuerpo 3.131 + declaración de IA 697), con 172 de
+  margen. El detalle que se sacrificó vive en docs/arquitectura.md, que se referencia al inicio.
+- Estructura: tabla de resultados (excluida del conteo), Parte 1 (dataset con corte t-1, el
+  hallazgo de la validación temporal frente a la aleatoria, modelo y umbral 0,33, techo de la
+  métrica por ambigüedad de la etiqueta, producción), Parte 2 (grafo, la decisión de que el LLM
+  nunca decide qué ofrecer, integración con el 35 % de decisiones que cambia el modelo, seguridad
+  por OTP y guardrails, evaluación con el fallo que encontró la suite), supuestos, riesgos,
+  conclusión y datos que más aportarían.
+- Declaración de uso de IA generativa: Claude Code como asistente en todo el desarrollo, con la
+  lista de decisiones tomadas por el candidato, y mención de que la solución construida usa
+  Gemini 2.5 Flash en Vertex AI y valores SHAP.
+- Por decisión del candidato, el documento está redactado en primera persona ("uní las fuentes",
+  "pasé a validación temporal", "monté la suite"), para que se lea como su relato del trabajo y no
+  como una descripción externa. Versión final: 3.930 caracteres de 4.000.
+
+15.4 Entregable 2: presentación ejecutiva (outputs/presentacion_opciones_de_pago.pptx)
+- 27 diapositivas con notas del orador en todas, generadas por código (src/presentacion/) para
+  poder rehacerlas si cambian los números: figuras.py toma los datos reales, captura_chat.py corre
+  una conversación contra el agente desplegado y la dibuja como captura de WhatsApp, y
+  construir.py arma el archivo. Se exporta también a PDF.
+- Estructura pedida por el enunciado: 10 minutos técnicos (láminas 1 a 20) y 5 minutos para un
+  comité directivo sin perfil técnico (21 a 27), con separador explícito entre los dos bloques.
+- El bloque técnico se cuenta como una historia con tres giros, no como un catálogo:
+  1) el archivo de enero solo trae llaves y las 45 variables de gestión describen el mismo mes
+     que hay que predecir, de donde sale la regla del corte en t-1;
+  2) la partición aleatoria daba 0,747 y Kaggle 0,704, lo que obligó a pasar a validación
+     temporal;
+  3) el techo no es el modelo sino la etiqueta: solo el 3 % de las filas son rechazos explícitos
+     y el 49 % son casos sin registro de oferta, de donde viene el 91 % de los falsos positivos.
+- Incluye además: calidad de los datos encontrada en el EDA (nulos como texto "None" en más de
+  500 mil líneas, mora superior al rango declarado, edades imposibles), comparación de modelos,
+  los seis caminos probados y descartados con su número, SHAP, MLOps, arquitectura del agente,
+  la decisión de que las reglas viven en código, el 35 % de decisiones donde manda el modelo,
+  las dos suites de pruebas y el fallo de seguridad que encontró la de escenarios.
+- El bloque ejecutivo no usa una sola métrica técnica: qué se construyó, qué gana el banco, las
+  cuatro preguntas que haría un comité de riesgo con su respuesta, cómo medirlo y qué falta.
+- Figuras nuevas en outputs/ppt/ (8 gráficos más la captura de conversación). Dos correcciones
+  durante el armado: el desglose de la etiqueta estaba mal estimado y se recalculó del CSV crudo
+  (3 % de rechazos explícitos, no 26 %), y varias cajas de texto desbordaban su recuadro, lo que
+  se detectó renderizando las diapositivas a imagen con PowerPoint y revisándolas una a una.
+
+15.5 Ajustes a la presentación pedidos por el candidato
+- El candidato editó el archivo a mano en PowerPoint (quitó el separador del bloque ejecutivo, la
+  lámina del hallazgo de la validación y la de cierre, y reacomodó algunas cajas). A partir de
+  aquí las modificaciones se hacen SOBRE el archivo existente con python-pptx, nunca regenerando
+  con construir.py, para no perder sus ajustes. Scripts: src/presentacion/ediciones.py y
+  src/presentacion/insertar_monitoreo.py.
+- Añadido el sandbox en dos láminas: en la de arquitectura del agente (el recuadro inferior ahora
+  menciona las nueve herramientas, el subagente y el sandbox con 40 clientes ficticios sobre
+  variables reales enmascaradas) y en la de pruebas (franja al pie aclarando que todo se prueba
+  allí, sin un solo dato personal real).
+- Añadido cómo entran los valores SHAP al agente: recuadro bajo el gráfico de importancia con la
+  frase real que el agente dice ("te lo recomiendo porque, por tu historial, ya habías tomado una
+  alternativa antes y te funcionó"). El recuadro verde de la derecha, que repetía la misma idea,
+  se reescribió para hablar del glosario que traduce las 100 variables a lenguaje de cliente.
+- Lámina nueva sobre el monitoreo de distribuciones registrado en MLflow, insertada después de la
+  de producción: figura con el reparto de las 100 variables (71 estables, 15 en aviso, 14 en
+  alarma) y las siete que más se movieron, con la explicación de por qué las tasas históricas se
+  disparan (en agosto son nulas por construcción) y la lectura de que la predicción se mantuvo
+  estable. Figura generada por src/presentacion/figura_monitoreo.py desde outputs/monitoreo_202401.csv.
+- Todas las láminas se renumeran automáticamente tras insertar, y se revisan renderizándolas a
+  imagen con PowerPoint. Se corrigieron dos problemas de formato: marcas de negrita que quedaron
+  visibles y un salto de línea partido.
+
+15.6 Manual de prueba para el evaluador (docs/manual_de_prueba.docx y .pdf)
+- Motivo: la solución está desplegada y el enunciado pide enviar los archivos y evidencias, así
+  que hace falta un documento que explique cómo probarla sin instalar nada.
+- Generado por src/presentacion/manual.py con python-docx y convertido a PDF con Word. Cuatro
+  páginas: cómo entrar (URL de la aplicación y su contraseña, más el enlace al repositorio), qué
+  se ve en cada pestaña, una prueba principal de seis pasos con el resultado esperado en cada uno,
+  la gestión proactiva, una tabla con ocho controles de seguridad y qué cliente usar para cada
+  uno, la campaña sobre los 40 clientes, dónde ver la trazabilidad, tres notas prácticas (el
+  límite de tres códigos por hora, el botón de reinicio y la latencia) y qué hay detrás de lo que
+  se prueba.
+- Deja explícito desde la primera página que todos los clientes son simulados y que las variables
+  del modelo provienen de obligaciones reales enmascaradas, sin dato personal alguno.
+- Los documentos generados (pdf, docx, pptx) NO se versionan, por decisión del candidato: solo se
+  versiona el código que los produce. Regla añadida al .gitignore.
+- Antes de generarlo se reinició el sandbox en la nube para que el evaluador empiece sin
+  conversaciones previas.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
@@ -1628,9 +1711,9 @@ deterministas + 77 verificaciones de escenario con LLM real), propuesta de opera
 producción y despliegue de demostración en Cloud Run consumiendo el modelo de producción con
 explicabilidad SHAP.
 Pendiente para la entrega (ambas partes):
-- Documento técnico (máximo 4,000 caracteres) con la declaración de uso de IA generativa.
+- Documento técnico (máximo 4,000 caracteres): HECHO (docs/documento_tecnico.md, 3.828).
 - Documento y diagrama de arquitectura de las dos partes: HECHO (docs/arquitectura.md).
-- Presentación ejecutiva de 15 minutos.
+- Presentación ejecutiva de 15 minutos: HECHA (outputs/presentacion_opciones_de_pago.pptx).
 - Opcional: enganchar el agente y el front al pipeline por rama (hoy se despliegan con
   gcloud builds submit --config deploy/cloudbuild_agente.yaml y cloudbuild_front.yaml) y apagar
   las instancias mínimas de los servicios de demostración cuando no se estén usando
