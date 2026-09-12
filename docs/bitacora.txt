@@ -1687,6 +1687,50 @@ ETAPA 15 · ENTREGABLES
 - Antes de generarlo se reinició el sandbox en la nube para que el evaluador empiece sin
   conversaciones previas.
 
+15.7 Conversión de los documentos a PDF (src/presentacion/md_a_pdf.py)
+- Motivo: el documento técnico y el de arquitectura estaban en Markdown. En GitHub se ven bien,
+  pero para adjuntarlos a un correo hacen falta en PDF, y sobre todo el de arquitectura, cuyos
+  cinco diagramas son bloques mermaid que un lector de texto no dibuja.
+- Cómo funciona: el Markdown se pasa a HTML con estilo de documento (tablas, encabezados, código)
+  y los bloques ```mermaid se convierten en <pre class="mermaid"> para que la librería los
+  dibuje en el navegador. La librería se descarga del CDN, pero el contenido del diagrama nunca
+  sale del equipo: el dibujo ocurre localmente. Después Edge en modo sin ventana imprime la
+  página a PDF.
+- Detalles que hubo que resolver:
+  * Edge imprimía su propio encabezado con la fecha y la ruta file:/// del archivo temporal;
+    se quitó usando --headless (no --headless=new) junto con --no-pdf-header-footer.
+  * Los diagramas salían pequeños: se subió el tamaño de letra de mermaid a 17px y se fijó
+    useMaxWidth con más separación entre nodos y niveles.
+  * Las tablas de clave y valor se escriben sin encabezado, y Markdown generaba igual una fila
+    de cabecera vacía; se elimina con una expresión regular sobre el HTML.
+  * En los dos documentos, las líneas del bloque inicial se unían en un solo párrafo; se
+    marcaron con dos espacios al final, que en Markdown es un salto de línea.
+- Resultado verificado renderizando las páginas a imagen: documento_tecnico.pdf (2 páginas) y
+  arquitectura.pdf (13 páginas, con los 5 diagramas dibujados).
+- Los PDF no se versionan (regla del .gitignore); solo el generador.
+
+15.8 Verificación completa antes de enviar (2026-09-11, noche)
+- Ramas: main, stage y dev alineadas; CI y despliegue en verde en las tres. El único commit
+  pendiente de promover es el del generador de PDF, que no afecta a lo desplegado.
+- Modelo en producción: /health, /version, /predict y /explain respondidos correctamente.
+  /version devuelve v4 con umbral 0,33 en las dos revisiones del canario (90/10), así que el
+  reparto de tráfico no produce respuestas distintas. /predict sobre tres obligaciones reales
+  del sandbox: 84 ms. /explain: 200 en diez llamadas seguidas, con factores SHAP; queda
+  descartado el 404 que se vio cuando SHAP solo estaba en dev.
+- Agente: recorrido completo de seis turnos (saludo, cédula, OTP incorrecto, OTP correcto,
+  consulta de opciones, aceptación) con registro efectivo de la opción. Latencias de 2,3 a
+  6,9 s por turno. El agente justificó con un factor del cliente ("ya habías tomado una
+  alternativa antes y te funcionó"), que es el uso previsto de los valores SHAP.
+- Controles de seguridad probados en vivo: inyección de prompt bloqueada en 0,2 s por la regla
+  determinista, consulta de un tercero rechazada, y solicitud de condonación escalada a gestor.
+- Proactivo: acción ACUERDO_PAGO con propensión 0,9168 tomada de la API real (fuente "api"),
+  plantilla enviada, 161 ms.
+- Front alcanzable públicamente en 0,33 s. Los tres servicios tienen mínimo una instancia
+  activa, así que el evaluador no se encuentra un arranque en frío.
+- Pruebas locales: 126 pasan. Se corrigió el README, que seguía diciendo 121.
+- El sandbox se reinició al terminar, porque la verificación dejó una opción aplicada, un caso
+  escalado y varias conversaciones. Estado final comprobado: 40 clientes, 0 escalamientos.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
