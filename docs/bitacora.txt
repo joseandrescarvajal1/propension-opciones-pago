@@ -1670,6 +1670,23 @@ ETAPA 15 · ENTREGABLES
   imagen con PowerPoint. Se corrigieron dos problemas de formato: marcas de negrita que quedaron
   visibles y un salto de línea partido.
 
+15.6 Manual de prueba para el evaluador (docs/manual_de_prueba.docx y .pdf)
+- Motivo: la solución está desplegada y el enunciado pide enviar los archivos y evidencias, así
+  que hace falta un documento que explique cómo probarla sin instalar nada.
+- Generado por src/presentacion/manual.py con python-docx y convertido a PDF con Word. Cuatro
+  páginas: cómo entrar (URL de la aplicación y su contraseña, más el enlace al repositorio), qué
+  se ve en cada pestaña, una prueba principal de seis pasos con el resultado esperado en cada uno,
+  la gestión proactiva, una tabla con ocho controles de seguridad y qué cliente usar para cada
+  uno, la campaña sobre los 40 clientes, dónde ver la trazabilidad, tres notas prácticas (el
+  límite de tres códigos por hora, el botón de reinicio y la latencia) y qué hay detrás de lo que
+  se prueba.
+- Deja explícito desde la primera página que todos los clientes son simulados y que las variables
+  del modelo provienen de obligaciones reales enmascaradas, sin dato personal alguno.
+- Los documentos generados (pdf, docx, pptx) NO se versionan, por decisión del candidato: solo se
+  versiona el código que los produce. Regla añadida al .gitignore.
+- Antes de generarlo se reinició el sandbox en la nube para que el evaluador empiece sin
+  conversaciones previas.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
