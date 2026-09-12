@@ -1647,6 +1647,29 @@ ETAPA 15 · ENTREGABLES
   (3 % de rechazos explícitos, no 26 %), y varias cajas de texto desbordaban su recuadro, lo que
   se detectó renderizando las diapositivas a imagen con PowerPoint y revisándolas una a una.
 
+15.5 Ajustes a la presentación pedidos por el candidato
+- El candidato editó el archivo a mano en PowerPoint (quitó el separador del bloque ejecutivo, la
+  lámina del hallazgo de la validación y la de cierre, y reacomodó algunas cajas). A partir de
+  aquí las modificaciones se hacen SOBRE el archivo existente con python-pptx, nunca regenerando
+  con construir.py, para no perder sus ajustes. Scripts: src/presentacion/ediciones.py y
+  src/presentacion/insertar_monitoreo.py.
+- Añadido el sandbox en dos láminas: en la de arquitectura del agente (el recuadro inferior ahora
+  menciona las nueve herramientas, el subagente y el sandbox con 40 clientes ficticios sobre
+  variables reales enmascaradas) y en la de pruebas (franja al pie aclarando que todo se prueba
+  allí, sin un solo dato personal real).
+- Añadido cómo entran los valores SHAP al agente: recuadro bajo el gráfico de importancia con la
+  frase real que el agente dice ("te lo recomiendo porque, por tu historial, ya habías tomado una
+  alternativa antes y te funcionó"). El recuadro verde de la derecha, que repetía la misma idea,
+  se reescribió para hablar del glosario que traduce las 100 variables a lenguaje de cliente.
+- Lámina nueva sobre el monitoreo de distribuciones registrado en MLflow, insertada después de la
+  de producción: figura con el reparto de las 100 variables (71 estables, 15 en aviso, 14 en
+  alarma) y las siete que más se movieron, con la explicación de por qué las tasas históricas se
+  disparan (en agosto son nulas por construcción) y la lectura de que la predicción se mantuvo
+  estable. Figura generada por src/presentacion/figura_monitoreo.py desde outputs/monitoreo_202401.csv.
+- Todas las láminas se renumeran automáticamente tras insertar, y se revisan renderizándolas a
+  imagen con PowerPoint. Se corrigieron dos problemas de formato: marcas de negrita que quedaron
+  visibles y un salto de línea partido.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
