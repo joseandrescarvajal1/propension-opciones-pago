@@ -36,3 +36,8 @@ agente/**/*.db
 agente/**/*.sqlite
 agente/**/*.db-shm
 agente/**/*.db-wal
+
+# Documentos generados (se producen con src/presentacion/): no son codigo
+docs/*.pdf
+docs/*.docx
+docs/*.pptx
