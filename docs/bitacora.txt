@@ -1621,6 +1621,32 @@ ETAPA 15 · ENTREGABLES
   "pasé a validación temporal", "monté la suite"), para que se lea como su relato del trabajo y no
   como una descripción externa. Versión final: 3.930 caracteres de 4.000.
 
+15.4 Entregable 2: presentación ejecutiva (outputs/presentacion_opciones_de_pago.pptx)
+- 27 diapositivas con notas del orador en todas, generadas por código (src/presentacion/) para
+  poder rehacerlas si cambian los números: figuras.py toma los datos reales, captura_chat.py corre
+  una conversación contra el agente desplegado y la dibuja como captura de WhatsApp, y
+  construir.py arma el archivo. Se exporta también a PDF.
+- Estructura pedida por el enunciado: 10 minutos técnicos (láminas 1 a 20) y 5 minutos para un
+  comité directivo sin perfil técnico (21 a 27), con separador explícito entre los dos bloques.
+- El bloque técnico se cuenta como una historia con tres giros, no como un catálogo:
+  1) el archivo de enero solo trae llaves y las 45 variables de gestión describen el mismo mes
+     que hay que predecir, de donde sale la regla del corte en t-1;
+  2) la partición aleatoria daba 0,747 y Kaggle 0,704, lo que obligó a pasar a validación
+     temporal;
+  3) el techo no es el modelo sino la etiqueta: solo el 3 % de las filas son rechazos explícitos
+     y el 49 % son casos sin registro de oferta, de donde viene el 91 % de los falsos positivos.
+- Incluye además: calidad de los datos encontrada en el EDA (nulos como texto "None" en más de
+  500 mil líneas, mora superior al rango declarado, edades imposibles), comparación de modelos,
+  los seis caminos probados y descartados con su número, SHAP, MLOps, arquitectura del agente,
+  la decisión de que las reglas viven en código, el 35 % de decisiones donde manda el modelo,
+  las dos suites de pruebas y el fallo de seguridad que encontró la de escenarios.
+- El bloque ejecutivo no usa una sola métrica técnica: qué se construyó, qué gana el banco, las
+  cuatro preguntas que haría un comité de riesgo con su respuesta, cómo medirlo y qué falta.
+- Figuras nuevas en outputs/ppt/ (8 gráficos más la captura de conversación). Dos correcciones
+  durante el armado: el desglose de la etiqueta estaba mal estimado y se recalculó del CSV crudo
+  (3 % de rechazos explícitos, no 26 %), y varias cajas de texto desbordaban su recuadro, lo que
+  se detectó renderizando las diapositivas a imagen con PowerPoint y revisándolas una a una.
+
 ======================================================================
 PENDIENTE / PRÓXIMOS PASOS (actualizado 2026-09-11, 15:40)
 ======================================================================
@@ -1647,7 +1673,7 @@ explicabilidad SHAP.
 Pendiente para la entrega (ambas partes):
 - Documento técnico (máximo 4,000 caracteres): HECHO (docs/documento_tecnico.md, 3.828).
 - Documento y diagrama de arquitectura de las dos partes: HECHO (docs/arquitectura.md).
-- Presentación ejecutiva de 15 minutos.
+- Presentación ejecutiva de 15 minutos: HECHA (outputs/presentacion_opciones_de_pago.pptx).
 - Opcional: enganchar el agente y el front al pipeline por rama (hoy se despliegan con
   gcloud builds submit --config deploy/cloudbuild_agente.yaml y cloudbuild_front.yaml) y apagar
   las instancias mínimas de los servicios de demostración cuando no se estén usando

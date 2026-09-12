@@ -7,6 +7,7 @@ Modelo que estima, con un mes de anticipación, la probabilidad de que una oblig
 | Carpeta | Contenido |
 |---|---|
 | `notebooks/` | Exploración (02), construcción del dataset (01), modelos (03 a 09), explicabilidad SHAP (10). Cada notebook registra sus experimentos en MLflow. |
+| `src/presentacion/` | Genera la presentación ejecutiva: figuras desde los datos, captura de una conversación real y armado del `.pptx` con notas del orador. |
 | `src/` | `download_data.py` (descarga), `features.py` (variables con corte t-1), `entrenar.py` (entrenamiento reproducible), `inferencia.py` (predicción), `monitoreo.py` y `monitoreo_mensual.py` (PSI y desempeño), `tracking.py` (MLflow), `mlflow_ui.py`. |
 | `api/` | API FastAPI: `/health`, `/version`, `/predict`, `/explain` (valores SHAP por obligación). |
 | `agente/` | Parte 2: `sandbox/` (base SQLite con 40 clientes simulados y WhatsApp/SMS simulados), `herramientas/` (OTP, elegibilidad, modelo, siguiente mejor acción), `grafo/` (LangGraph: guardrails, deep agent, escalamiento, proactivo), `prompts/`, `api/` (FastAPI del agente), `front/` (Streamlit), `pruebas/` (escenarios con LLM real). |

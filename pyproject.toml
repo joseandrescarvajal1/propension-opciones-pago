@@ -20,6 +20,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 [tool.ruff.lint.per-file-ignores]
 "agente/**" = ["E501"]  # prompts, reglas y consultas largas en una línea
 "tests/agente/**" = ["E501"]
+"src/presentacion/**" = ["E501"]   # textos de diapositivas y notas del orador en una línea
 
 [tool.coverage.run]
 # Cobertura solo sobre el código que corre en producción (API e inferencia) y el monitoreo.
