@@ -1,6 +1,6 @@
 # Diseño de arquitectura y operación de la solución
 
-Entregable 5 de la prueba. Describe cómo opera hoy la solución construida y cómo operaría en el
+Entregable 5 de la prueba. Describe cómo opera hoy la solución construida y cómo operaría en el  
 entorno productivo del banco, para las dos partes: el modelo de propensión y el sistema agéntico.
 
 Lo construido y desplegado se marca **[implementado]**; lo demás es la propuesta de evolución.
