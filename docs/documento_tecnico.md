@@ -1,7 +1,7 @@
 # Documento técnico
 
-Prueba Analítica: Modelo Opciones de Pago (season 3). Entregable 1.
-Repositorio: https://github.com/joseandrescarvajal1/propension-opciones-pago
+Prueba Analítica: Modelo Opciones de Pago (season 3). Entregable 1.  
+Repositorio: https://github.com/joseandrescarvajal1/propension-opciones-pago  
 Arquitectura, operación y diagramas: `docs/arquitectura.md`
 
 ### Resultados

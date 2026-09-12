@@ -26,3 +26,4 @@ langchain-google-genai
 langgraph
 langgraph-checkpoint-sqlite
 streamlit
+markdown
